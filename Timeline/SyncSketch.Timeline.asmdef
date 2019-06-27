@@ -1,7 +1,8 @@
 {
     "name": "SyncSketch.Timeline",
     "references": [
-        "SyncSketch"
+        "SyncSketch",
+        "Unity.Timeline"
     ],
     "optionalUnityReferences": [],
     "includePlatforms": [],
@@ -10,5 +11,6 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": []
+    "defineConstraints": [],
+    "versionDefines": []
 }

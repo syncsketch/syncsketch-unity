@@ -760,7 +760,11 @@ namespace SyncSketch
 			}
 
 			snippingScreenshot = true;
+#if UNITY_2019_1_OR_NEWER
+			SceneView.duringSceneGui += OnSceneGUI;
+#else
 			SceneView.onSceneGUIDelegate += OnSceneGUI;
+#endif
 			if (SceneView.lastActiveSceneView != null)
 			{
 				SceneView.lastActiveSceneView.Focus();
@@ -782,7 +786,12 @@ namespace SyncSketch
 		{
 			draggingRect = false;
 			snippingScreenshot = false;
+#if UNITY_2019_1_OR_NEWER
+			SceneView.duringSceneGui -= OnSceneGUI;
+#else
 			SceneView.onSceneGUIDelegate -= OnSceneGUI;
+#endif
+
 			dragStart = Vector2.zero;
 			dragRect = Rect.zero;
 
