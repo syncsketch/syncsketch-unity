@@ -2,7 +2,9 @@
 
 [SyncSketch](https://www.syncsketch.com/) plugin for Unity.
 
-Requires Unity **2018.3+**.
+Requires Unity **2019.1+**.
+
+*For Unity 2018.3 or 2018.4, use the branch [`dev_2018.3`](https://github.com/syncsketch/syncsketch-unity/tree/dev_2018.3).*
 
 Take screenshots and record videos, and send them to your SyncSketch project all within Unity!
 
