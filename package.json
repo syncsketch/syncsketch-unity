@@ -2,7 +2,7 @@
     "name": "com.syncsketch.unity-plugin",
     "displayName": "SyncSketch Unity Plugin",
     "version": "0.0.1",
-    "unity": "2018.3",
+    "unity": "2019.1",
     "description": "Unity plugin to record and send videos to SyncSketch for review",
     "keywords": ["SyncSketch", "Sync", "Review", "Video"],
     "category": "Plugin"
