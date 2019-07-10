@@ -599,9 +599,7 @@ namespace SyncSketch
 				screenshotTexture.Apply(false, false);
 				*/
 
-				// This method captures the Scene View camera's pixels, without any UI element
 				Texture2D screenshotTexture;
-
 				var screenPos = Preferences.instance.captureSceneViewGizmos ? GetSceneViewScreenPosition(SceneView.lastActiveSceneView) : Rect.zero;
 				if (Preferences.instance.captureSceneViewGizmos && screenPos.width > 0 && screenPos.height > 0)
 				{
@@ -793,6 +791,7 @@ namespace SyncSketch
 		void OnSceneGUI(SceneView sceneView)
 		{
 			var evt = Event.current;
+			float pixelRatio = EditorGUIUtility.pixelsPerPoint;
 
 			// use the right mouse button because the left one starts the default selection rect in the Scene View
 			if (evt.type == EventType.MouseDown && evt.button == 1)
@@ -807,13 +806,6 @@ namespace SyncSketch
 			if (draggingRect)
 			{
 				EditorGUIUtility.AddCursorRect(new Rect(evt.mousePosition.x - 50, evt.mousePosition.y - 50, 100, 100), MouseCursor.ScaleArrow);
-
-				// adjust dragging rect according to screen dpi
-				float pixelRatio = EditorGUIUtility.pixelsPerPoint;
-				dragRect.width *= pixelRatio;
-				dragRect.height *= pixelRatio;
-				dragRect.x *= pixelRatio;
-				dragRect.y *= pixelRatio;
 
 				// calculate the current dragging rectangle
 				if (evt.type == EventType.MouseDrag)
@@ -856,10 +848,19 @@ namespace SyncSketch
 						// crop the result
 						int camWidth = sceneView.camera.pixelWidth;
 						int camHeight = sceneView.camera.pixelHeight;
-						int x = (int)Mathf.Clamp(dragRect.x, 0, camWidth);
-						int y = (int)Mathf.Clamp(camHeight - dragRect.yMax, 0, camWidth);
-						int w = (int)Mathf.Clamp(dragRect.width, 1, camWidth - x);
-						int h = (int)Mathf.Clamp(dragRect.height, 1, camHeight - y);
+
+						Rect offsetRect = dragRect;
+						offsetRect.x *= pixelRatio;
+						offsetRect.width *= pixelRatio;
+						offsetRect.height *= pixelRatio;
+						offsetRect.y *= pixelRatio;
+						// U  or y coordinates are flipped, so we measure from the bottom of the texture and offset by the height
+						offsetRect.y = screenshotTexture.height - offsetRect.y - offsetRect.height;
+
+						int x = (int) Mathf.Clamp(offsetRect.x, 0, camWidth);
+						int y = (int) Mathf.Clamp(offsetRect.y, 0, camHeight);
+						int w = (int) Mathf.Clamp(offsetRect.width, 1, camWidth - offsetRect.x);
+						int h = (int) Mathf.Clamp(offsetRect.height, 1, camHeight - offsetRect.y);
 
 						var pixels = screenshotTexture.GetPixels(x, y, w, h);
 						screenshotTexture.Resize(w, h);
