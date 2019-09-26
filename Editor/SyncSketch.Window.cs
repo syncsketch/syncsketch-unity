@@ -99,6 +99,20 @@ namespace SyncSketch
 			Preferences.Clear();
 		}
 
+		[MenuItem("Window/SyncSketch/Set Log Level/Default", priority = 2224)]
+		static void SetLogLevelDefault()
+		{
+			Log.LogLevel = Log.Level.Default;
+			Log.Message("Log level set to " + Log.LogLevel);
+		}
+
+		[MenuItem("Window/SyncSketch/Set Log Level/Full", priority = 2225)]
+		static void SetLogLevelFull()
+		{
+			Log.LogLevel = Log.Level.Full;
+			Log.Message("Log level set to " + Log.LogLevel);
+		}
+
 		#region GUI
 
 		void OnEnable()
@@ -744,7 +758,7 @@ namespace SyncSketch
 				return;
 			}
 
-			Log.Message("Add review: " + name + " : " + description);
+			Log.Message("Adding review: " + name + " : " + description, Log.Level.Full);
 
 			var newReview = project.AddReview(syncSketch, name, description);
 			if (newReview != null)

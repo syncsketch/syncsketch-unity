@@ -458,7 +458,7 @@ namespace SyncSketch
 		{
 			string urlParams = (getParams == null || getParams.Length == 0) ? "" : "&" + string.Join("&", getParams);
 			string url = string.Format("{0}/{1}/?username={2}&api_key={3}{4}", URL_API, entity, username, apiKey, urlParams);
-			Log.Message("GetJSON: " + url);
+			Log.Message("GetJSON: " + url, Log.Level.Full);
 			using (UnityWebRequest request = UnityWebRequest.Get(url))
 			{
 				request.SetRequestHeader("Content-Type", "application/json");
@@ -482,7 +482,7 @@ namespace SyncSketch
 				}
 				else
 				{
-					Log.Message("Response: " + request.downloadHandler.text);
+					Log.Message("Response: " + request.downloadHandler.text, Log.Level.Full);
 					return request.downloadHandler.text;
 				}
 			}
@@ -494,7 +494,7 @@ namespace SyncSketch
 			string url = string.Format("{0}/{1}/?username={2}&api_key={3}{4}", URL_API, entity, username, apiKey, urlParams);
 			string jsonPost = JSON.Dump(postData);
 			byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonPost);
-			Log.Message(string.Format("PostJSON: {0}\n{1}", url, jsonPost));
+			Log.Message(string.Format("PostJSON: {0}\n{1}", url, jsonPost), Log.Level.Full);
 			using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
 			{
 				request.SetRequestHeader("Content-Type", "application/json");
@@ -520,7 +520,7 @@ namespace SyncSketch
 				}
 				else
 				{
-					Log.Message("Response: " + request.downloadHandler.text);
+					Log.Message("Response: " + request.downloadHandler.text, Log.Level.Full);
 					return request.downloadHandler.text;
 				}
 			}
@@ -565,7 +565,7 @@ namespace SyncSketch
 				}
 			}
 
-			Log.Message(string.Format("PostData: {0}", url));
+			Log.Message(string.Format("PostData: {0}", url), Log.Level.Full);
 			using (UnityWebRequest request = UnityWebRequest.Post(url, wwwForm))
 			{
 				request.Send();
@@ -588,7 +588,7 @@ namespace SyncSketch
 				}
 				else
 				{
-					Log.Message("Response: " + request.downloadHandler.text);
+					Log.Message("Response: " + request.downloadHandler.text, Log.Level.Full);
 					return request.downloadHandler.text;
 				}
 			}
@@ -603,7 +603,7 @@ namespace SyncSketch
 			string urlParams = (getParams == null || getParams.Length == 0) ? "" : "&" + string.Join("&", getParams);
 			string url = string.Format("{0}/{1}/?username={2}&api_key={3}{4}", URL_API, entity, username, apiKey, urlParams);
 
-			Log.Message("GetJSON_Async: " + url);
+			Log.Message("GetJSON_Async: " + url, Log.Level.Full);
 			UnityWebRequest request = UnityWebRequest.Get(url);
 			request.SetRequestHeader("Content-Type", "application/json");
 			request.Send();
@@ -618,7 +618,7 @@ namespace SyncSketch
 			string url = string.Format("{0}/{1}/?username={2}&api_key={3}{4}", URL_API, entity, username, apiKey, urlParams);
 			string jsonPost = JSON.Dump(postData);
 			byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonPost);
-			Log.Message(string.Format("PostJSON_Async: {0}\n{1}", url, jsonPost));
+			Log.Message(string.Format("PostJSON_Async: {0}\n{1}", url, jsonPost), Log.Level.Full);
 			UnityWebRequest request = new UnityWebRequest(url, "POST");
 			request.SetRequestHeader("Content-Type", "application/json");
 			request.uploadHandler = new UploadHandlerRaw(jsonBytes);
@@ -644,7 +644,7 @@ namespace SyncSketch
 				}
 			}
 
-			Log.Message(string.Format("PostData_Async: {0}", url));
+			Log.Message(string.Format("PostData_Async: {0}", url), Log.Level.Full);
 			UnityWebRequest request = UnityWebRequest.Post(url, wwwForm);
 			request.Send();
 
@@ -704,7 +704,7 @@ namespace SyncSketch
 				// request successful
 				if (asyncCall.request.isDone)
 				{
-					Log.Message("Response: " + asyncCall.request.downloadHandler.text);
+					Log.Message("Response: " + asyncCall.request.downloadHandler.text, Log.Level.Full);
 
 					// verify that the response is a JSON string, else it's an error
 					var message = asyncCall.request.downloadHandler.text;
