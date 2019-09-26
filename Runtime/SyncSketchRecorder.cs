@@ -65,27 +65,31 @@ namespace SyncSketch
 				width = this.width;
 				height = this.height;
 
+				var gameViewSize = Handles.GetMainGameViewSize();
+				int screenWidth = (int)gameViewSize.x;
+				int screenHeight = (int)gameViewSize.y;
+
 				if (this.useGameResolution)
 				{
-					width = Screen.width;
-					height = Screen.height;
+					width = screenWidth;
+					height = screenHeight;
 				}
 				else if (this.keepAspectRatio)
 				{
-					float ratio = (float)Screen.height/Screen.width;
+					float ratio = (float)screenHeight/screenWidth;
 					height = Mathf.FloorToInt(width * ratio);
 				}
 
 				if (width > 1280)
 				{
-					float ratio = (float)Screen.height/Screen.width;
+					float ratio = (float)screenHeight/screenWidth;
 					width = 1280;
 					height = Mathf.FloorToInt(width * ratio);
 				}
 
 				if (height > 720)
 				{
-					float ratio = (float)Screen.width/Screen.height;
+					float ratio = (float)screenWidth/screenHeight;
 					height = 720;
 					width = Mathf.FloorToInt(height * ratio);
 				}
@@ -172,7 +176,7 @@ namespace SyncSketch
 
 				public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 				{
-					return EditorGUI.GetPropertyHeight(property, property.isExpanded);
+					return EditorGUI.GetPropertyHeight(property, label, property.isExpanded);
 				}
 			}
 
@@ -192,10 +196,13 @@ namespace SyncSketch
 		public KeyCode recordKey = KeyCode.R;
 		[Label("Pause Recording", "Press this key in play mode to pause/unpause the recording")]
 		public KeyCode pauseKey = KeyCode.P;
+		[Tooltip("Enable this when using multiple cameras rendering on top of each other (legacy render pipeline)")]
+		public bool stackedCameras; // note: enabled when recording from Toolbox
 
 		[HideInInspector] public int reviewId;
 		[HideInInspector] public RecordingInfo lastRecordingInfo;
 		[HideInInspector] public ReviewUploadInfo[] lastUploads;
+		[HideInInspector, NonSerialized] public bool toolbox; // true when this recorder was created from the SyncSketch Toolbox
 
 		public bool IsRecording { get { return isRecording; } }
 
@@ -209,6 +216,9 @@ namespace SyncSketch
 		FFmpegSession session;
 		RenderTexture tempRT;
 		GameObject blitter;
+		#endregion
+
+		#region Recording
 
 		RenderTextureFormat GetTargetFormat(Camera camera)
 		{
@@ -220,20 +230,12 @@ namespace SyncSketch
 			return camera.allowMSAA ? QualitySettings.antiAliasing : 1;
 		}
 
-		#endregion
-
-		#region Recording
-
 		public void StartRecording()
 		{
 			if (!recorderInitialized)
 			{
 				int width, height;
 				recordingSettings.GetRecordingResolution(out width, out height);
-
-				// make sure we have even numbers (for mp4 format)
-				if (width % 2 == 1) width++;
-				if (height % 2 == 1) height++;
 
 				camera = this.GetComponent<Camera>();
 				if (camera == null)
@@ -251,7 +253,7 @@ namespace SyncSketch
 				}
 
 				// Give a newly created temporary render texture to the camera if it's set to render to a screen. Also create a blitter object to keep frames presented on the screen.
-				if (camera.targetTexture == null)
+				if (camera.targetTexture == null && !stackedCameras)
 				{
 					tempRT = new RenderTexture(width, height, 24, GetTargetFormat(camera));
 					tempRT.antiAliasing = GetAntiAliasingLevel(camera);
@@ -308,6 +310,7 @@ namespace SyncSketch
 			{
 				// Dispose the frame texture.
 				camera.targetTexture = null;
+				tempRT.Release();
 				Destroy(tempRT);
 				tempRT = null;
 			}
@@ -328,7 +331,7 @@ namespace SyncSketch
 				// We have to use this technique because when Play Mode stops, the domain is reloaded and this will lose all value changes made during Play Mode.
 				if (currentRecordingInfo == null)
 				{
-					currentRecordingInfo = new RecordingInfo(this);
+					currentRecordingInfo = new RecordingInfo(this.GetInstanceID());
 				}
 				currentRecordingInfo.files.Add(fullPath);
 			}
@@ -381,7 +384,8 @@ namespace SyncSketch
 		{
 			if (currentRecordingInfo != null)
 			{
-				EditorPrefs.SetString("SyncSketch_LastRecordedFiles", currentRecordingInfo.ToJSON());
+				string key = toolbox ? "SyncSketch_LastRecordedFiles_Toolbox" : "SyncSketch_LastRecordedFiles";
+				EditorPrefs.SetString(key, currentRecordingInfo.ToJSON());
 			}
 		}
 #endif
@@ -417,44 +421,9 @@ namespace SyncSketch
 					PlayPauseRecording();
 				}
 
-				// Note: frame compensation was in the original FFMpegOut code, it is disabled here.
-
-				var gap = Time.time - FrameTime;
-				var delta = 1 / recordingSettings.frameRate;
-
-				if (gap < 0)
+				if (!stackedCameras)
 				{
-					// Update without frame data.
-					//PushFrame(null);
-				}
-				else if (gap < delta)
-				{
-					// Single-frame behind from the current time:
-					// Push the current frame to FFmpeg.
-
-					PushFrame(camera.targetTexture);
-					frameCount++;
-				}
-				else if (gap < delta * 2)
-				{
-					// Two-frame behind from the current time:
-					// Push the current frame twice to FFmpeg. Actually this is not
-					// an efficient way to catch up. We should think about
-					// implementing frame duplication in a more proper way. #fixme
-					//PushFrame(camera.targetTexture);
-					PushFrame(camera.targetTexture);
-					frameCount += 2;
-				}
-				else
-				{
-					// Show a warning message about the situation.
-					WarnFrameDrop();
-
-					// Push the current frame to FFmpeg.
-					PushFrame(camera.targetTexture);
-
-					// Compensate the time delay.
-					frameCount += Mathf.FloorToInt(gap * recordingSettings.frameRate);
+					CheckTimeAndPushFrame(tempRT);
 				}
 			}
 		}
@@ -523,9 +492,60 @@ namespace SyncSketch
 		#endregion
 #endif
 
+		void OnPostRender()
+		{
+			// When using toolbox, we need to capture during OnPostRender because stacked camera won't work with a target
+			if (stackedCameras && recorderInitialized && RenderTexture.active != null)
+			{
+				CheckTimeAndPushFrame(RenderTexture.active);
+			}
+		}
+
+		void CheckTimeAndPushFrame(Texture texture)
+		{
+			// Note: frame compensation was in the original FFMpegOut code, it is disabled here.
+			var gap = Time.time - FrameTime;
+			var delta = 1 / recordingSettings.frameRate;
+
+			if (gap < 0)
+			{
+				// Update without frame data.
+				//PushFrame(null);
+			}
+			else if (gap < delta)
+			{
+				// Single-frame behind from the current time:
+				// Push the current frame to FFmpeg.
+
+				PushFrame(texture);
+				frameCount++;
+			}
+			else if (gap < delta * 2)
+			{
+				// Two-frame behind from the current time:
+				// Push the current frame twice to FFmpeg. Actually this is not
+				// an efficient way to catch up. We should think about
+				// implementing frame duplication in a more proper way. #fixme
+				//PushFrame(camera.targetTexture);
+				PushFrame(texture);
+				frameCount += 2;
+			}
+			else
+			{
+				// Show a warning message about the situation.
+				WarnFrameDrop();
+
+				// Push the current frame to FFmpeg.
+				PushFrame(texture);
+
+				// Compensate the time delay.
+				frameCount += Mathf.FloorToInt(gap * recordingSettings.frameRate);
+			}
+		}
+
 		void PushFrame(Texture texture)
 		{
-			// The first few frames are black, possibly because Unity isn't fully 
+			// The first few frames are black, possibly because Unity isn't fully initialized
 			if(Time.renderedFrameCount < 3)
 			{
 				return;
@@ -572,10 +592,10 @@ namespace SyncSketch
 			public int recorderInstanceID;  // InstanceID stays the same between assembly reloads
 			public List<string> files;
 
-			public RecordingInfo(SyncSketchRecorder recorder)
+			public RecordingInfo(int instanceID)
 			{
 				files = new List<string>();
-				recorderInstanceID = recorder.GetInstanceID();
+				recorderInstanceID = instanceID;
 			}
 
 			public string ToJSON()
@@ -591,6 +611,7 @@ namespace SyncSketch
 
 		[NonSerialized] RecordingInfo currentRecordingInfo;
 		[NonSerialized] public bool editorShouldUpload;
+		[NonSerialized] public bool newRecordingsFetched;
 
 		public void FetchLastRecordings()
 		{
@@ -602,6 +623,7 @@ namespace SyncSketch
 				if (recordingInfo.recorderInstanceID == this.GetInstanceID())
 				{
 					this.lastRecordingInfo = recordingInfo;
+					this.newRecordingsFetched = true;
 
 					if (uploadOnStop)
 					{

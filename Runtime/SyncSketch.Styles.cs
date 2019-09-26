@@ -131,6 +131,8 @@ namespace SyncSketch
 		public static GUIContent ClipboardIcon = new GUIContentIcon("icon_clipboard.png");
 		public static GUIContent UrlIcon = new GUIContentIcon("icon_url.png");
 		public static GUIContent ScreenshotScene = new GUIContentIcon("icon_screenshot_scene.png");
+		public static GUIContent Video = new GUIContentIcon("icon_video.png");
+		public static GUIContent PlaybackStop = new GUIContentIcon("icon_playback_stop.png");
 		public static GUIContent ScreenshotSnip = new GUIContentIcon("icon_screenshot_snip.png");
 		public static GUIContent ScreenshotGame = new GUIContentIcon("icon_screenshot_game.png");
 	}

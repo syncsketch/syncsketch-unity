@@ -68,12 +68,14 @@ namespace SyncSketch
 
 		// Screenshot options
 		public FilePath screenshotOutputFile = new FilePath("Screenshot", "png");
+		public FilePath videoOutputFile = new FilePath("Video", "mp4");
 		public BoolPref captureSceneViewGizmos = new BoolPref(false);
 		public List<ReviewUploadInfo> lastScreenshotUploads = new List<ReviewUploadInfo>();
 
 		// Record options
 		public BoolPref uploadToReviewAfterScreenshot = new BoolPref(false);
 		public IntPref lastSelectedItemId = new IntPref(0);
+		public BoolPref stopPlayerOnStopRecording = new BoolPref(false);
 
 		// UI options
 		public IntPref treeViewRowsCount = new IntPref(10);
