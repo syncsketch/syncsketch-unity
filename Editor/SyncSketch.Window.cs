@@ -699,10 +699,7 @@ namespace SyncSketch
 		{
 			selectedProject = project;
 			selectedReview = null;
-			if (treeView != null)
-			{
-				treeView.SetSelection(project.id, TreeViewSelectionOptions.RevealAndFrame);
-			}
+			treeView?.SetSelection(project.id, TreeViewSelectionOptions.RevealAndFrame);
 		}
 
 		void OnSelectReview(object reviewObj)
@@ -719,10 +716,7 @@ namespace SyncSketch
 		void OnSelectReview(API.Review review)
 		{
 			selectedReview = review;
-			if (treeView != null)
-			{
-				treeView.SetSelection(review.id, TreeViewSelectionOptions.RevealAndFrame);
-			}
+			treeView?.SetSelection(review.id, TreeViewSelectionOptions.RevealAndFrame);
 		}
 
 		void DoAddReview(string name, string description, object projectObj)
@@ -956,7 +950,7 @@ namespace SyncSketch
 		void UploadMediaFile(byte[] data, string filename, string mimeType, bool noConvert)
 		{
 			blockingRequests++;
-			API.AsyncResult callback = (bool isError, string message) =>
+			void callback(bool isError, string message)
 			{
 				blockingRequests--;
 				progressBar = 0;
@@ -980,7 +974,7 @@ namespace SyncSketch
 				{
 					Log.Error("An error occurred: " + message);
 				}
-			};
+			}
 			selectedReview.UploadMediaAsync(syncSketch, callback, UpdateProgressBar, data, filename, mimeType, noConvertFlag: noConvert);
 		}
 
