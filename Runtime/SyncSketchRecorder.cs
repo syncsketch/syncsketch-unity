@@ -172,7 +172,7 @@ namespace SyncSketch
 
 				public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 				{
-					return EditorGUI.GetPropertyHeight(property, property.isExpanded);
+					return EditorGUI.GetPropertyHeight(property, label, property.isExpanded);
 				}
 			}
 

@@ -230,12 +230,6 @@ namespace SyncSketch
 					}
 				}
 
-#if UNITY_EDITOR_OSX
-				const string revealTooltip = "Reveal in Finder";
-#else
-				const string revealTooltip = "Reveal in Explorer";
-#endif
-
 				// No recordings
 				if (lastRecordings == null || lastRecordings.Count == 0)
 				{
@@ -248,7 +242,7 @@ namespace SyncSketch
 							var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
 							GUI.Button(rect, GUIContents.PlayMediaIcon.Tooltip("Play the clip with the default application"), EditorStyles.miniButton);
 							rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-							GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(revealTooltip), EditorStyles.miniButton);
+							GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton);
 						}
 					}
 				}
@@ -281,7 +275,7 @@ namespace SyncSketch
 								}
 							}
 							rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-							if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(revealTooltip), EditorStyles.miniButton))
+							if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton))
 							{
 								EditorUtility.RevealInFinder(recording.fullPath);
 							}
@@ -369,7 +363,7 @@ namespace SyncSketch
 								}
 
 								rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-								if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(revealTooltip), EditorStyles.miniButton))
+								if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton))
 								{
 									EditorUtility.RevealInFinder(lastRecordings[i].fullPath);
 								}
