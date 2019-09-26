@@ -56,7 +56,7 @@ namespace SyncSketch
 				int count = 1;
 				while (System.IO.File.Exists(fullPath))
 				{
-					fullPath = string.Format("{0}\\{1} {2}{3}", directory, filename, count, extension);
+					fullPath = string.Format("{0}/{1} {2}{3}", directory, filename, count, extension);
 					count++;
 				}
 				return fullPath;
@@ -230,6 +230,7 @@ namespace SyncSketch
 	[CustomPropertyDrawer(typeof(FilePath))]
 	public class FilePathDrawer : PropertyDrawer
 	{
+		SerializedProperty lastProperty; // could reuse the same FilePathDrawer for multiple file paths
 		SerializedProperty directoryProp;
 		SerializedProperty filenameProp;
 		SerializedProperty extensionProp;
@@ -240,12 +241,14 @@ namespace SyncSketch
 
 		public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
 		{
-			if (directoryProp == null || filenameProp == null)
+			if (lastProperty != property || directoryProp == null || filenameProp == null)
 			{
 				directoryProp = property.FindPropertyRelative("_directory");
 				filenameProp = property.FindPropertyRelative("filename");
 				extensionProp = property.FindPropertyRelative("extension");
 				UpdateGuiContent();
+
+				lastProperty = property;
 			}
 
 			EditorGUI.BeginChangeCheck();
@@ -405,7 +408,7 @@ namespace SyncSketch
 
 		public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 		{
-			return EditorGUI.GetPropertyHeight(property, property.isExpanded);
+			return EditorGUI.GetPropertyHeight(property, label, property.isExpanded);
 		}
 	}
 
@@ -414,6 +417,16 @@ namespace SyncSketch
 	/// </summary>
 	public static class GUIUtils
 	{
+		#region Constants
+
+#if UNITY_EDITOR_OSX
+		public const string revealInExplorer = "Reveal in Finder";
+#else
+		public const string revealInExplorer = "Reveal in Explorer";
+#endif
+
+		#endregion
+
 		#region GUIContent Helper
 
 		static readonly GUIContent guiContent = new GUIContent();
@@ -963,10 +976,10 @@ namespace SyncSketch
 		static Color colorLineLight = new Color(0.5f, 0.5f, 0.5f);
 		public static void Separator()
 		{
-			GUILayout.Space(4);
+			GUILayout.Space(8);
 			var color = EditorGUIUtility.isProSkin ? colorLineDark : colorLineLight;
 			DrawLine(color);
-			GUILayout.Space(4);
+			GUILayout.Space(8);
 		}
 
 		static Color colorLineShadowDark = new Color(0.125f, 0.125f, 0.125f);

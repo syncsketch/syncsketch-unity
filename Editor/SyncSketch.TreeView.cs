@@ -173,12 +173,14 @@ namespace SyncSketch
 		}
 
 		static Color colorSelected = EditorGUIUtility.isProSkin ? new Color32(62, 95, 150, 255) : new Color32(62, 125, 231, 255);
+		static Color colorSelectedDisabled = EditorGUIUtility.isProSkin ? new Color32(62, 95, 150, 128) : new Color32(62, 125, 231, 128);
+
 		protected override void RowGUI(RowGUIArgs args)
 		{
 			// small hack to make the blue selected color persistent, even when tree view has lost focus
 			if (args.selected && Event.current.type == EventType.Repaint)
 			{
-				EditorGUI.DrawRect(args.rowRect, colorSelected);
+				EditorGUI.DrawRect(args.rowRect, GUI.enabled ? colorSelected : colorSelectedDisabled);
 			}
 
 			var btnRect = args.rowRect;

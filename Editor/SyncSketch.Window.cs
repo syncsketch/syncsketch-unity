@@ -45,6 +45,7 @@ namespace SyncSketch
 
 		// UI
 
+		Vector2 scrollPosition;
 		[SerializeField] SyncSketchTreeView.State treeViewState;
 		SyncSketchTreeView treeView;
 
@@ -63,13 +64,13 @@ namespace SyncSketch
 		/// <summary>
 		/// Adds the menu option to show the window.
 		/// </summary>
-		[MenuItem("Window/SyncSketch Toolbox", priority = 2222)]
+		[MenuItem("Window/SyncSketch/Toolbox", priority = 2222)]
 		static void OpenWindow()
 		{
 			GetWindow<Window>("SyncSketch");
 		}
 
-		[MenuItem("Window/SyncSketch/Clear Preferences", priority = 2222)]
+		[MenuItem("Window/SyncSketch/Clear Preferences", priority = 2223)]
 		static void ClearPrefs()
 		{
 			Preferences.Clear();
@@ -189,17 +190,19 @@ namespace SyncSketch
 			{
 				// Logged in
 
+				const int bigButtonSize = 44;
+
 				GUIUtils.Separator();
 
+				scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+				bool isWideEnough = EditorGUIUtility.currentViewWidth >= 470;
+
 				// screenshot buttons
-				GUILayout.Label("Take Screenshot:", GUILayout.Width(labelWidth));
+				GUILayout.Label("Take Screenshot:", EditorStyles.largeLabel, GUILayout.Width(labelWidth));
 				using (GUIUtils.Horizontal)
 				{
 					using (GUIUtils.Enabled(!snippingScreenshot))
 					{
-						const int bigButtonSize = 44;
-
-						bool isWideEnough = EditorGUIUtility.currentViewWidth >= 400;
 						GUIStyle buttonStyle = isWideEnough ? GUIStyles.ButtonLeftAligned : "Button";
 
 						if (GUILayout.Button(GUIContents.ScreenshotGame.Label(isWideEnough ? " Full\n Game View" : null).Tooltip("Game View Screenshot"), buttonStyle, GUILayout.Height(bigButtonSize)))
