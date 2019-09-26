@@ -68,6 +68,7 @@ namespace SyncSketch
 
 		// Screenshot options
 		public FilePath screenshotOutputFile = new FilePath("Screenshot", "png");
+		public FilePath videoOutputFile = new FilePath("Video", "mp4");
 		public BoolPref captureSceneViewGizmos = new BoolPref(false);
 		public List<ReviewUploadInfo> lastScreenshotUploads = new List<ReviewUploadInfo>();
 
