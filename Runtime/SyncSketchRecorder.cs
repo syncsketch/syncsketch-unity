@@ -2,11 +2,12 @@
 using UnityEditor;
 #endif
 using UnityEngine;
-using FFmpegOut;
 using System.Collections;
 using System.IO;
 using System;
 using System.Collections.Generic;
+using UTJ.FrameCapturer;
+using UnityEngine.Rendering;
 
 // TODO Record/Pause Keys should be global settings
 
@@ -14,8 +15,6 @@ namespace SyncSketch
 {
 	public class SyncSketchRecorder : MonoBehaviour
 	{
-		const string EncoderSettings = "-c:v libx264 -pix_fmt yuv420p -profile:v main -maxrate 5M -bufsize 1M -g 10";
-
 		[Serializable]
 		public class RecordingSettings
 		{
@@ -200,6 +199,7 @@ namespace SyncSketch
 		[HideInInspector] public int reviewId;
 		[HideInInspector] public RecordingInfo lastRecordingInfo;
 		[HideInInspector] public ReviewUploadInfo[] lastUploads;
+		[HideInInspector, NonSerialized] public bool toolbox; // true when this recorder was created from the SyncSketch Toolbox
 
 		public bool IsRecording { get { return isRecording; } }
 
@@ -210,16 +210,22 @@ namespace SyncSketch
 		bool isRecording;
 		bool recorderInitialized;
 		string fullPath;
-		FFmpegSession session;
 		RenderTexture tempRT;
-		GameObject blitter;
+		CommandBuffer commandBuffer;
+		[SerializeField, HideInInspector] Shader copyShader;
+		Material copyMaterial;
+		Mesh quadMesh;
+
+		MovieEncoder encoder;
+
 		#endregion
 
 		#region Recording
 
-		RenderTextureFormat GetTargetFormat(Camera camera)
+		RenderTextureFormat GeTargetFormat(Camera camera)
 		{
-			return camera.allowHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
+			return RenderTextureFormat.ARGB32;
+			// return camera.allowHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
 		}
 
 		int GetAntiAliasingLevel(Camera camera)
@@ -234,7 +240,10 @@ namespace SyncSketch
 				int width, height;
 				recordingSettings.GetRecordingResolution(out width, out height);
 
-				camera = this.GetComponent<Camera>();
+				if (camera == null)
+				{
+					camera = this.GetComponent<Camera>();
+				}
 				if (camera == null)
 				{
 					Log.Error("Can't record, the target camera is null");
@@ -252,13 +261,16 @@ namespace SyncSketch
 				// Give a newly created temporary render texture to the camera if it's set to render to a screen. Also create a blitter object to keep frames presented on the screen.
 				if (camera.targetTexture == null)
 				{
+					/*
 					tempRT = new RenderTexture(width, height, 24, GetTargetFormat(camera));
 					tempRT.antiAliasing = GetAntiAliasingLevel(camera);
 					camera.targetTexture = tempRT;
-					blitter = Blitter.CreateInstance(camera);
+					blitter = new GameObject("Blitter");
+					*/
 				}
 
 				// Start an FFmpeg session.
+				/*
 				session = FFmpegSession.CreateWithArguments(
 					string.Format("-y -f rawvideo -vcodec rawvideo -pixel_format rgba -colorspace bt709 -video_size {0}x{1} -framerate {2} -loglevel warning -i - {3} {4}",
 					width,
@@ -266,17 +278,87 @@ namespace SyncSketch
 					recordingSettings.frameRate,
 					EncoderSettings,
 					string.Format("\"{0}\"", fullPath)));
+				*/
+
+				// create temp texture that will be used to copy frame buffer
+				var format = GeTargetFormat(camera);
+				tempRT = new RenderTexture(width, height, 0, format);
+				tempRT.wrapMode = TextureWrapMode.Repeat;
+				tempRT.antiAliasing = GetAntiAliasingLevel(camera);
+				tempRT.Create();
+
+				// create encoder
+				var config = new MovieEncoderConfigs(MovieEncoder.Type.MP4);
+				config.captureAudio = false;
+				config.captureVideo = true;
+				config.mp4EncoderSettings.videoWidth = width;
+				config.mp4EncoderSettings.videoHeight = height;
+				config.mp4EncoderSettings.videoBitrateMode = fcAPI.fcBitrateMode.VBR;
+				config.mp4EncoderSettings.videoTargetFramerate = recordingSettings.frameRate;
+				var forwardPath = Utils.Path.ForwardSlashes(fullPath).Replace(".mp4", "");
+				encoder = MovieEncoder.Create(config, forwardPath);
+
+				if (encoder == null || !encoder.IsValid())
+				{
+					Log.Error("Can't record, couldn't create MovieEncoder");
+					return;
+				}
 
 				// Time tracking variables
-				startTime = Time.time;
+				startTime = Time.unscaledTime;
 				frameCount = 0;
 				frameDropCount = 0;
+				recordedFrames = 0;
+				initialFrame = Time.renderedFrameCount;
+				initialRealTime = Time.realtimeSinceStartup;
+
+				if (recordingSettings.noFrameSkip)
+				{
+					Time.maximumDeltaTime = (1.0f / recordingSettings.frameRate);
+				}
 
 				recordingSettings.OnStartRecording();
 
+				// create command buffer
+				{
+					if (copyShader == null)
+					{
+						copyShader = fcAPI.GetFrameBufferCopyShader();
+						if (copyShader == null)
+						{
+							Log.Error("Copy shader is missing!");
+							return;
+						}
+					}
+
+					if (quadMesh == null) quadMesh = fcAPI.CreateFullscreenQuad();
+					if (copyMaterial == null) copyMaterial = new Material(copyShader);
+
+					if (camera.targetTexture != null)
+					{
+						copyMaterial.EnableKeyword("OFFSCREEN");
+					}
+					else
+					{
+						copyMaterial.DisableKeyword("OFFSCREEN");
+					}
+
+					int tid = Shader.PropertyToID("_TmpFrameBuffer");
+					commandBuffer = new CommandBuffer();
+					commandBuffer.name = "SyncSketch Recorder: copy frame buffer";
+
+					commandBuffer.GetTemporaryRT(tid, -1, -1, 0, FilterMode.Bilinear);
+					commandBuffer.Blit(BuiltinRenderTextureType.CurrentActive, tid);
+					commandBuffer.SetRenderTarget(tempRT);
+					commandBuffer.DrawMesh(quadMesh, Matrix4x4.identity, copyMaterial, 0, 0);
+					commandBuffer.ReleaseTemporaryRT(tid);
+					
+					camera.AddCommandBuffer(CameraEvent.AfterEverything, commandBuffer);
+				}
+
+
 				recorderInitialized = true;
 			}
-
 			isRecording = true;
 		}
 
@@ -296,11 +378,17 @@ namespace SyncSketch
 
 			isRecording = false;
 
-			if (session != null)
+			if (encoder != null)
 			{
-				session.Close();
-				session.Dispose();
-				session = null;
+				encoder.Release();
+				encoder = null;
+			}
+
+			if (commandBuffer != null)
+			{
+				GetComponent<Camera>().RemoveCommandBuffer(CameraEvent.AfterEverything, commandBuffer);
+				commandBuffer.Release();
+				commandBuffer = null;
 			}
 
 			if (tempRT != null)
@@ -309,13 +397,6 @@ namespace SyncSketch
 				camera.targetTexture = null;
 				Destroy(tempRT);
 				tempRT = null;
-			}
-
-			if (blitter != null)
-			{
-				// Destroy the blitter game object.
-				Destroy(blitter);
-				blitter = null;
 			}
 
 			recorderInitialized = false;
@@ -332,6 +413,22 @@ namespace SyncSketch
 				currentRecordingInfo.files.Add(fullPath);
 			}
 #endif
+		}
+
+		IEnumerator OnPostRender()
+		{
+			if (isRecording && encoder != null)
+			{
+				yield return new WaitForEndOfFrame();
+
+				double timestamp = 1.0 / recordingSettings.frameRate * recordedFrames;
+
+				fcAPI.fcLock(tempRT, TextureFormat.RGB24, (data, fmt) =>
+				{
+					encoder.AddVideoFrame(data, fmt, timestamp);
+				});
+				recordedFrames++;
+			}
 		}
 
 		#endregion
@@ -357,6 +454,10 @@ namespace SyncSketch
 			{
 				camera = this.GetComponent<Camera>();
 			}
+
+#if UNITY_EDITOR
+			copyShader = fcAPI.GetFrameBufferCopyShader();
+#endif
 		}
 
 		void OnEnable()
@@ -380,20 +481,11 @@ namespace SyncSketch
 		{
 			if (currentRecordingInfo != null)
 			{
-				EditorPrefs.SetString("SyncSketch_LastRecordedFiles", currentRecordingInfo.ToJSON());
+				string key = toolbox ? "SyncSketch_LastRecordedFiles_Toolbox" : "SyncSketch_LastRecordedFiles";
+				EditorPrefs.SetString(key, currentRecordingInfo.ToJSON());
 			}
 		}
 #endif
-
-		IEnumerator Start()
-		{
-			// Sync with FFmpeg pipe thread at the end of every frame.
-			for (var eof = new WaitForEndOfFrame(); ;)
-			{
-				yield return eof;
-				session?.CompletePushFrames();
-			}
-		}
 
 		void Update()
 		{
@@ -415,48 +507,25 @@ namespace SyncSketch
 				{
 					PlayPauseRecording();
 				}
+			}
 
-				// Note: frame compensation was in the original FFMpegOut code, it is disabled here.
-
-				var gap = Time.time - FrameTime;
-				var delta = 1 / recordingSettings.frameRate;
-
-				if (gap < 0)
-				{
-					// Update without frame data.
-					//PushFrame(null);
-				}
-				else if (gap < delta)
-				{
-					// Single-frame behind from the current time:
-					// Push the current frame to FFmpeg.
-
-					PushFrame(camera.targetTexture);
-					frameCount++;
-				}
-				else if (gap < delta * 2)
-				{
-					// Two-frame behind from the current time:
-					// Push the current frame twice to FFmpeg. Actually this is not
-					// an efficient way to catch up. We should think about
-					// implementing frame duplication in a more proper way. #fixme
-					//PushFrame(camera.targetTexture);
-					PushFrame(camera.targetTexture);
-					frameCount += 2;
-				}
-				else
-				{
-					// Show a warning message about the situation.
-					WarnFrameDrop();
-
-					// Push the current frame to FFmpeg.
-					PushFrame(camera.targetTexture);
-
-					// Compensate the time delay.
-					frameCount += Mathf.FloorToInt(gap * recordingSettings.frameRate);
-				}
+			if (isRecording && recordingSettings.noFrameSkip)
+			{
+				StartCoroutine(Wait());
 			}
 		}
+
+		IEnumerator Wait()
+		{
+			yield return new WaitForEndOfFrame();
+
+			float wt = (1.0f / recordingSettings.frameRate) * (Time.renderedFrameCount - initialFrame);
+			while (Time.realtimeSinceStartup - initialRealTime < wt)
+			{
+				System.Threading.Thread.Sleep(1);
+			}
+		}
+
 
 #if UNITY_EDITOR
 
@@ -523,20 +592,6 @@ namespace SyncSketch
 		#endregion
 #endif
 
-		void PushFrame(Texture texture)
-		{
-			// The first few frames are black, possibly because Unity isn't fully 
-			if(Time.renderedFrameCount < 3)
-			{
-				return;
-			}
-
-			if (isRecording)
-			{
-				session.PushFrame(texture);
-			}
-		}
-
 		#endregion
 
 		#region Time Tracking
@@ -544,6 +599,9 @@ namespace SyncSketch
 		int frameCount;
 		float startTime;
 		int frameDropCount;
+		int initialFrame;
+		int recordedFrames;
+		float initialRealTime;
 
 		float FrameTime
 		{
