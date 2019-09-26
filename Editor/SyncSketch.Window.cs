@@ -50,7 +50,6 @@ namespace SyncSketch
 
 		// video recording
 		bool startRecordingWithPlayMode = false;
-		bool stopPlayerAsWell = false;
 		// TODO this is the same as in SyncSketch.RecorderEditor, might be worth sharing the same code eventually?
 		struct Recording
 		{
@@ -371,13 +370,13 @@ namespace SyncSketch
 						{
 							if (GUILayout.Button(GUIContents.PlaybackStop.Label(" Stop Recording"), buttonStyle, GUILayout.Height(bigButtonSize)))
 							{
-								StopRecording(stopPlayerAsWell);
+								StopRecording(Preferences.instance.stopPlayerOnStopRecording);
 							}
 						}
 					}
 				}
 
-				stopPlayerAsWell = GUILayout.Toggle(stopPlayerAsWell, GUIUtils.TempContent(" Stop Play Mode when Stopping Recording"));
+				Preferences.instance.stopPlayerOnStopRecording.value = GUILayout.Toggle(Preferences.instance.stopPlayerOnStopRecording, GUIUtils.TempContent(" Stop Play Mode when Stopping Recording"));
 
 				// output path
 				height = filePathDrawer.GetPropertyHeight(videoOutputFileProperty, videoOutputPathLabel);
