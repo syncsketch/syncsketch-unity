@@ -3,6 +3,8 @@ using UnityEditor;
 using Object = UnityEngine.Object;
 using UnityEditor.IMGUI.Controls;
 using System.IO;
+using System;
+using System.Collections.Generic;
 
 namespace SyncSketch
 {
@@ -31,10 +33,13 @@ namespace SyncSketch
 		API.Review selectedReview;
 		SyncSketchRecorder videoRecorder;
 
-		[SerializeField] FilePath outputFile = new FilePath("Screenshot", "png");
+		[SerializeField] FilePath screenshotOutputFile = new FilePath("Screenshot", "png");
+		[SerializeField] FilePath videoOutputFile = new FilePath("Video", "mp4");
 		// Required to draw the FilePath inspector properly (Unity makes it very complicated to draw with the custom property drawer!)
-		SerializedProperty outputFileProperty;
-		GUIContent outputPathLabel;
+		SerializedProperty screenshotOutputFileProperty;
+		SerializedProperty videoOutputFileProperty;
+		GUIContent screenshotOutputPathLabel;
+		GUIContent videoOutputPathLabel;
 		FilePathDrawer filePathDrawer;
 
 		// last taken screenshot
@@ -42,6 +47,25 @@ namespace SyncSketch
 		[SerializeField] string lastScreenshotFilename;
 		[SerializeField] bool lastScreenshotFileExists;
 		bool showReviewUploadWarning;
+
+		// video recording
+		bool startRecordingWithPlayMode = false;
+		bool stopPlayerAsWell = false;
+		// TODO this is the same as in SyncSketch.RecorderEditor, might be worth sharing the same code eventually?
+		struct Recording
+		{
+			public string fullPath;
+			public string filename;
+			public bool fileExists;
+
+			public void Reset()
+			{
+				filename = null;
+				fileExists = false;
+				fullPath = null;
+			}
+		}
+		[SerializeField] List<Recording> lastRecordings = new List<Recording>();
 
 		// UI
 
@@ -82,14 +106,19 @@ namespace SyncSketch
 		{
 			EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
-			if(Preferences.instance.screenshotOutputFile != null)
+			if (Preferences.instance.screenshotOutputFile != null)
 			{
-				outputFile = Preferences.instance.screenshotOutputFile;
+				screenshotOutputFile = Preferences.instance.screenshotOutputFile;
 			}
-
 			var serializedObject = new SerializedObject(this);
-			outputFileProperty = serializedObject.FindProperty(nameof(Window.outputFile));
-			outputPathLabel = new GUIContent(outputFileProperty.displayName);
+			screenshotOutputFileProperty = serializedObject.FindProperty("screenshotOutputFile");
+			screenshotOutputPathLabel = new GUIContent(screenshotOutputFileProperty.displayName);
+			if (Preferences.instance.videoOutputFile != null)
+			{
+				videoOutputFile = Preferences.instance.videoOutputFile;
+			}
+			videoOutputFileProperty = serializedObject.FindProperty("videoOutputFile");
+			videoOutputPathLabel = new GUIContent(videoOutputFileProperty.displayName);
 			filePathDrawer = new FilePathDrawer();
 
 			syncSketch = PersistentSession.TryFind()?.syncSketch;
@@ -106,7 +135,75 @@ namespace SyncSketch
 		{
 			if (playMode == PlayModeStateChange.EnteredPlayMode)
 			{
-				InitRecorder(false);
+				OnPlayModeStarted();
+			}
+			else if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode)
+			{
+				OnPlayModeEnded();
+			}
+		}
+
+		void OnPlayModeStarted()
+		{
+			if (startRecordingWithPlayMode)
+			{
+				InitVideoRecorder();
+				startRecordingWithPlayMode = false;
+			}
+
+			this.Repaint();
+		}
+
+		void OnPlayModeEnded()
+		{
+			FetchLastRecording();
+			videoRecorder = null;
+
+			this.Repaint();
+		}
+
+		void FetchLastRecording()
+		{
+			// Try to retrieve last saved recording from EditorPrefs
+			string json = EditorPrefs.GetString("SyncSketch_LastRecordedFiles_Toolbox", null);
+			if (!string.IsNullOrEmpty(json))
+			{
+				var recordings = SyncSketchRecorder.RecordingInfo.FromJSON(json);
+
+				if (recordings.files != null && recordings.files.Count > 0)
+				{
+					foreach (var file in recordings.files)
+					{
+						var recording = new Recording()
+						{
+							fullPath = file,
+							fileExists = File.Exists(file),
+							filename = Path.GetFileName(file)
+						};
+
+						this.lastRecordings.Add(recording);
+					}
+
+					// auto upload
+					if (Preferences.instance.uploadToReviewAfterScreenshot && selectedReview != null)
+					{
+						if (this.lastRecordings.Count == 1)
+						{
+							var recording = this.lastRecordings[0];
+							if (recording.fileExists)
+							{
+								var bytes = File.ReadAllBytes(recording.fullPath);
+								UploadMediaFile(bytes, recording.filename, "video/mp4", true);
+							}
+						}
+						else if (this.lastRecordings.Count > 1)
+						{
+							UploadMultipleRecordings();
+						}
+					}
+				}
+
+				EditorPrefs.DeleteKey("SyncSketch_LastRecordedFiles_Toolbox");
 			}
 		}
 
@@ -229,20 +326,56 @@ namespace SyncSketch
 
 				Preferences.instance.captureSceneViewGizmos.value = GUILayout.Toggle(Preferences.instance.captureSceneViewGizmos, " Capture Scene View UI & Gizmos");
 
-				using (GUIUtils.Enabled(selectedReview != null && selectedReview.isValid))
-				{
-					string label = string.Format(" Auto upload to selected review ({0})", selectedReview != null && selectedReview.isValid ? "'" + selectedReview.name + "'" : "none selected");
-					Preferences.instance.uploadToReviewAfterScreenshot.value = GUILayout.Toggle(Preferences.instance.uploadToReviewAfterScreenshot, label);
-				}
-
 				// output path
-				float height = filePathDrawer.GetPropertyHeight(outputFileProperty, outputPathLabel);
+				float height = filePathDrawer.GetPropertyHeight(screenshotOutputFileProperty, screenshotOutputPathLabel);
 				var outputRect = EditorGUILayout.GetControlRect(GUILayout.Height(height));
 				EditorGUI.BeginChangeCheck();
-				filePathDrawer.OnGUI(outputRect, outputFileProperty, outputPathLabel);
+				filePathDrawer.OnGUI(outputRect, screenshotOutputFileProperty, screenshotOutputPathLabel);
 				if (EditorGUI.EndChangeCheck())
 				{
-					Preferences.instance.screenshotOutputFile = outputFile;
+					Preferences.instance.screenshotOutputFile = screenshotOutputFile;
+					Preferences.Save();
+				}
+
+				GUIUtils.Separator();
+
+				// video buttons
+				GUILayout.Label(GUIUtils.TempContent("Record Video:"), EditorStyles.largeLabel, GUILayout.Width(labelWidth));
+				using (GUIUtils.Horizontal)
+				{
+					using (GUIUtils.Enabled(!snippingScreenshot))
+					{
+						GUIStyle buttonStyle = GUIStyles.ButtonLeftAligned;
+
+						using (GUIUtils.Enabled(!startRecordingWithPlayMode && !(videoRecorder != null && videoRecorder.IsRecording)))
+						{
+							string label = (EditorApplication.isPlaying && !startRecordingWithPlayMode) ? " Record Video" : " Play & Record";
+							if (GUILayout.Button(GUIContents.Video.Label(label), buttonStyle, GUILayout.Height(bigButtonSize)))
+							{
+								DoRecordVideo();
+							}
+						}
+
+						using (GUIUtils.Enabled(videoRecorder != null && videoRecorder.IsRecording && EditorApplication.isPlaying))
+						{
+							if (GUILayout.Button(GUIContents.PlaybackStop.Label(" Stop Recording"), buttonStyle, GUILayout.Height(bigButtonSize)))
+							{
+								StopRecording(stopPlayerAsWell);
+							}
+						}
+					}
+				}
+
+				stopPlayerAsWell = GUILayout.Toggle(stopPlayerAsWell, GUIUtils.TempContent(" Stop Play Mode when Stopping Recording"));
+
+				// output path
+				height = filePathDrawer.GetPropertyHeight(videoOutputFileProperty, videoOutputPathLabel);
+				outputRect = EditorGUILayout.GetControlRect(GUILayout.Height(height));
+				EditorGUI.BeginChangeCheck();
+				filePathDrawer.OnGUI(outputRect, videoOutputFileProperty, videoOutputPathLabel);
+				if (EditorGUI.EndChangeCheck())
+				{
+					Preferences.instance.videoOutputFile = videoOutputFile;
 					Preferences.Save();
 				}
 
@@ -253,75 +386,12 @@ namespace SyncSketch
 
 				GUIUtils.Separator();
 
-				// last saved file
-				using (GUIUtils.Horizontal)
+				// auto upload checkbox
+				using (GUIUtils.Enabled(selectedReview != null && selectedReview.isValid))
 				{
-					EditorGUILayout.PrefixLabel(GUIUtils.TempContent("Last Screenshot File:"), EditorStyles.textField);
-					EditorGUILayout.TextField(lastScreenshotFilename);
-
-					using (GUIUtils.Enabled(lastScreenshotFileExists))
-					{
-						/*
-						var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-						if (GUI.Button(rect, GUIContents.ClipboardIcon.Tooltip("Copy image to clipboard"), EditorStyles.miniButton))
-						{
-							// copy to clipboard
-							if (File.Exists(lastScreenshotFullPath))
-							{
-								CopyToClipboard(lastScreenshotFullPath);
-								ShowNotification(GUIUtils.TempContent("Image copied to clipboard"));
-							}
-							else
-							{
-								EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exist:\n'{0}'", lastScreenshotFullPath), "OK");
-								lastScreenshotFileExists = false;
-							}
-						}
-						*/
-
-						var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-						if (GUI.Button(rect, GUIContents.PlayMediaIcon.Tooltip("Play the clip with the default application"), EditorStyles.miniButton))
-						{
-							if (File.Exists(lastScreenshotFullPath))
-							{
-								System.Diagnostics.Process.Start(lastScreenshotFullPath);
-							}
-							else
-							{
-								EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exist:\n'{0}'", lastScreenshotFullPath), "OK");
-								lastScreenshotFileExists = false;
-							}
-						}
-#if UNITY_EDITOR_OSX
-						const string revealTooltip = "Reveal in Finder";
-#else
-						const string revealTooltip = "Reveal in Explorer";
-#endif
-						rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
-						if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(revealTooltip), EditorStyles.miniButton))
-						{
-							EditorUtility.RevealInFinder(lastScreenshotFullPath);
-						}
-					}
-				}
-
-				// "Upload to review" button
-				using (GUIUtils.Enabled(selectedReview != null && lastScreenshotFileExists))
-				{
-					string label = selectedReview != null && selectedReview.isValid && !string.IsNullOrEmpty(lastScreenshotFilename) ? string.Format("Upload '<b>{0}</b>'\nto selected review '<b>{1}</b>'", lastScreenshotFilename, selectedReview.name) : "Upload";
-					if (GUILayout.Button(label, GUIStyles.ButtonRichText, GUILayout.Height(Mathf.CeilToInt(EditorGUIUtility.singleLineHeight * 2.1f))))
-					{
-						if (syncSketch == null || !syncSketch.isValid)
-						{
-							EditorUtility.DisplayDialog("SyncSketch : Error", "You don't seem to be logged in to SyncSketch", "OK");
-						}
-						else
-						{
-							// upload the image file to the selected review
-							byte[] screenshotBytes = File.ReadAllBytes(lastScreenshotFullPath);
-							UploadScreenshot(screenshotBytes, lastScreenshotFilename);
-						}
-					}
+					string label = string.Format(" Auto upload files to selected review ({0})", selectedReview != null && selectedReview.isValid ? "'" + selectedReview.name + "'" : "none selected");
+					var guiContent = GUIUtils.TempContent(label, "Automatically upload the screenshot/video once it has been taken/recorded to the currently selected review.");
+					Preferences.instance.uploadToReviewAfterScreenshot.value = GUILayout.Toggle(Preferences.instance.uploadToReviewAfterScreenshot, guiContent);
 				}
 
 				// Select a review warning
@@ -336,6 +406,230 @@ namespace SyncSketch
 					EditorGUILayout.HelpBox("Please select a review for the 'Automatically upload screenshot to review' option to work.", MessageType.Warning);
 				}
 
+				GUIUtils.Separator();
+
+				// last saved file(s)
+				// - video
+				if (lastRecordings.Count > 0)
+				{
+					// - one video
+					if (lastRecordings.Count == 1)
+					{
+						var lastRecording = lastRecordings[0];
+						using (GUIUtils.Enabled(lastRecording.fileExists))
+						{
+							using (GUIUtils.Horizontal)
+							{
+								GUILayout.Label(GUIUtils.TempContent("Last Recorded Video:"), GUILayout.ExpandWidth(false));
+								var rect = EditorGUILayout.GetControlRect();
+								EditorGUI.DrawRect(rect, Color.black * 0.1f);
+								GUI.Label(rect, lastRecording.filename);
+
+								using (GUIUtils.Enabled(lastRecording.fileExists))
+								{
+									rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+									if (GUI.Button(rect, GUIContents.PlayMediaIcon.Tooltip("Play the clip with the default application"), EditorStyles.miniButton))
+									{
+										if (File.Exists(lastRecording.fullPath))
+										{
+											System.Diagnostics.Process.Start(lastRecording.fullPath);
+										}
+										else
+										{
+											EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exists:\n'{0}'", lastRecording.fullPath), "OK");
+											lastRecording.fileExists = false;
+										}
+									}
+									rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+									if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton))
+									{
+										EditorUtility.RevealInFinder(lastRecording.fullPath);
+									}
+								}
+							}
+						}
+					}
+					// - multiple videos
+					else
+					{
+						GUILayout.Label(GUIUtils.TempContent("Last Recorded Videos:"));
+
+						var areaRect = EditorGUILayout.BeginVertical();
+						GUI.Box(areaRect, GUIContent.none);
+						GUILayout.Space(4);
+						for (int i = 0; i < lastRecordings.Count; i++)
+						{
+							var lineRect = EditorGUILayout.BeginHorizontal();
+							{
+								GUILayout.Space(4);
+
+								if (i % 2 == 0)
+								{
+									lineRect.xMin += 4;
+									lineRect.xMax -= 4;
+									EditorGUI.DrawRect(lineRect, Color.black * 0.1f);
+								}
+
+								GUILayout.Label(lastRecordings[i].filename);
+
+								using (GUIUtils.Enabled(lastRecordings[i].fileExists))
+								{
+									var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+									if (GUI.Button(rect, GUIContents.PlayMediaIcon.Tooltip("Play the clip with the default application"), EditorStyles.miniButton))
+									{
+										if (File.Exists(lastRecordings[i].fullPath))
+										{
+											System.Diagnostics.Process.Start(lastRecordings[i].fullPath);
+										}
+										else
+										{
+											EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exists:\n'{0}'", lastRecordings[i].fullPath), "OK");
+											var r = lastRecordings[i];
+											r.fileExists = false;
+											lastRecordings[i] = r;
+										}
+									}
+
+									rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+									if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton))
+									{
+										EditorUtility.RevealInFinder(lastRecordings[i].fullPath);
+									}
+
+									using (GUIUtils.Enabled((selectedReview != null && selectedReview.isValid)))
+									{
+										rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+										if (GUI.Button(rect, GUIContents.UploadIcon.Tooltip(GUI.enabled ? "Upload to selected review" : "Please select a review to be able to upload the file"), EditorStyles.miniButton))
+										{
+											if (syncSketch == null || !syncSketch.isValid)
+											{
+												EditorUtility.DisplayDialog("SyncSketch : Error", "You don't seem to be logged in to SyncSketch", "OK");
+											}
+											else
+											{
+												//verify that the file seems valid
+												var fileInfo = new FileInfo(lastRecordings[i].fullPath);
+												if (!fileInfo.Exists)
+												{
+													EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file does not exist anymore:\n'{0}'", lastRecordings[i].fullPath), "OK");
+													var r = lastRecordings[i];
+													r.fileExists = false;
+													lastRecordings[i] = r;
+												}
+												else if (fileInfo.Length < 1000)
+												{
+													// consider files less than 1kB to be invalid (only header written, most likely error during recording)
+													EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file doesn't seem to be valid:\n'{0}'", lastRecordings[i].fullPath), "OK");
+												}
+												else
+												{
+													// upload the video file to the selected review
+													var bytes = File.ReadAllBytes(lastRecordings[i].fullPath);
+													UploadMediaFile(bytes, lastRecordings[i].filename, "video/mp4", true);
+												}
+											}
+										}
+									}
+								}
+
+								GUILayout.Space(4);
+							}
+							EditorGUILayout.EndHorizontal();
+						}
+						GUILayout.Space(4);
+						EditorGUILayout.EndVertical();
+					}
+				}
+				else
+				// - screenshot
+				{
+					using (GUIUtils.Horizontal)
+					{
+						EditorGUILayout.PrefixLabel(GUIUtils.TempContent("Last Screenshot File:"), EditorStyles.textField);
+						EditorGUILayout.TextField(lastScreenshotFilename);
+
+						using (GUIUtils.Enabled(lastScreenshotFileExists))
+						{
+							/*
+							var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+							if (GUI.Button(rect, GUIContents.ClipboardIcon.Tooltip("Copy image to clipboard"), EditorStyles.miniButton))
+							{
+								// copy to clipboard
+								if (File.Exists(lastScreenshotFullPath))
+								{
+									CopyToClipboard(lastScreenshotFullPath);
+									ShowNotification(GUIUtils.TempContent("Image copied to clipboard"));
+								}
+								else
+								{
+									EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exist:\n'{0}'", lastScreenshotFullPath), "OK");
+									lastScreenshotFileExists = false;
+								}
+							}
+							*/
+
+							var rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+							if (GUI.Button(rect, GUIContents.PlayMediaIcon.Tooltip("Play the clip with the default application"), EditorStyles.miniButton))
+							{
+								if (File.Exists(lastScreenshotFullPath))
+								{
+									System.Diagnostics.Process.Start(lastScreenshotFullPath);
+								}
+								else
+								{
+									EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The file does not exist:\n'{0}'", lastScreenshotFullPath), "OK");
+									lastScreenshotFileExists = false;
+								}
+							}
+
+							rect = EditorGUILayout.GetControlRect(GUILayout.Width(26));
+							if (GUI.Button(rect, GUIContents.ExternalIcon.Tooltip(GUIUtils.revealInExplorer), EditorStyles.miniButton))
+							{
+								EditorUtility.RevealInFinder(lastScreenshotFullPath);
+							}
+						}
+					}
+				}
+
+				// "Upload to review" button
+				bool showUploadButton = lastRecordings.Count <= 1;
+				if (showUploadButton)
+				{
+					using (GUIUtils.Enabled(selectedReview != null && (lastScreenshotFileExists || lastRecordings.Count > 0)))
+					{
+						// multiple video files
+						if (lastRecordings.Count > 1)
+						{
+
+						}
+						else
+						// one screenshot or one video
+						{
+							// figure out if we're uploading a screenshot or a video
+							bool isVideo = lastRecordings.Count == 1;
+							string filename = isVideo ? lastRecordings[0].filename : lastScreenshotFilename;
+
+							string label = selectedReview != null && selectedReview.isValid && !string.IsNullOrEmpty(filename) ? string.Format("Upload '<b>{0}</b>'\nto selected review '<b>{1}</b>'", filename, selectedReview.name) : "Upload";
+							if (GUILayout.Button(label, GUIStyles.ButtonRichText, GUILayout.Height(Mathf.CeilToInt(EditorGUIUtility.singleLineHeight * 2.1f))))
+							{
+								if (syncSketch == null || !syncSketch.isValid)
+								{
+									EditorUtility.DisplayDialog("SyncSketch : Error", "You don't seem to be logged in to SyncSketch", "OK");
+								}
+								else
+								{
+									// upload the image/video file to the selected review
+									string fullpath = isVideo ? lastRecordings[0].fullPath : lastScreenshotFullPath;
+									byte[] bytes = File.ReadAllBytes(fullpath);
+									UploadMediaFile(bytes, filename, isVideo ? "video/mp4" : "image/png", isVideo);
+								}
+							}
+						}
+					}
+				}
+
+				GUIUtils.Separator();
+
 				// Last uploaded files list
 				var lastReviews = Preferences.instance.lastScreenshotUploads;
 
@@ -349,75 +643,13 @@ namespace SyncSketch
 					});
 				}
 
-				/*
-				GUIUtilities.DrawSeparator();
-
-				using (GUIUtilities.HorizontalCentered)
-				{
-					using (GUIUtilities.Enabled(!Application.isPlaying))
-					{
-						if (GUIUtilities.ButtonBig("Play and Record\nGame View"))
-						{
-							InitRecorder(true);
-							EditorApplication.isPlaying = true;
-						}
-					}
-
-					using (GUIUtilities.Enabled(Application.isPlaying && videoRecorder == null))
-					{
-						if (GUIUtilities.ButtonBig("Record\nGame View"))
-						{
-							InitRecorder(true);
-						}
-					}
-
-					using (GUIUtilities.Enabled(Application.isPlaying && videoRecorder != null))
-					{
-						if (GUIUtilities.ButtonBig("Stop Recording"))
-						{
-							StopRecording();
-						}
-
-						if (GUIUtilities.ButtonBig("Stop Recording\nand Play Mode"))
-						{
-							StopRecording();
-							EditorApplication.isPlaying = false;
-						}
-					}
-				}
-				*/
+				EditorGUILayout.EndScrollView();
 			}
 
 			GUILayout.EndArea();
 			EditorGUIUtility.labelWidth = prevLabelWidth;
 
 			GUI.enabled = guiEnabled;
-		}
-
-		void InitRecorder(bool createIfNecessary)
-		{
-			if (videoRecorder == null)
-			{
-				var mainCam = Camera.main;
-				if (mainCam != null)
-				{
-					videoRecorder = mainCam.GetComponent<SyncSketchRecorder>();
-
-					if (videoRecorder == null && createIfNecessary)
-					{
-						videoRecorder = mainCam.gameObject.AddComponent<SyncSketchRecorder>();
-						//videoRecorder.hideFlags = HideFlags.HideAndDontSave;
-					}
-				}
-			}
-		}
-
-		void StopRecording()
-		{
-			if (videoRecorder != null)
-			{
-				Destroy(videoRecorder);
-			}
 		}
 
 		void OnTreeViewItemSelected(API.SyncSketchItem item)
@@ -466,7 +698,10 @@ namespace SyncSketch
 		{
 			selectedProject = project;
 			selectedReview = null;
-			treeView?.SetSelection(project.id, TreeViewSelectionOptions.RevealAndFrame);
+			if (treeView != null)
+			{
+				treeView.SetSelection(project.id, TreeViewSelectionOptions.RevealAndFrame);
+			}
 		}
 
 		void OnSelectReview(object reviewObj)
@@ -483,7 +718,10 @@ namespace SyncSketch
 		void OnSelectReview(API.Review review)
 		{
 			selectedReview = review;
-			treeView?.SetSelection(review.id, TreeViewSelectionOptions.RevealAndFrame);
+			if (treeView != null)
+			{
+				treeView.SetSelection(review.id, TreeViewSelectionOptions.RevealAndFrame);
+			}
 		}
 
 		void DoAddReview(string name, string description, object projectObj)
@@ -614,7 +852,7 @@ namespace SyncSketch
 				}
 
 				// save to disk and send for review
-				string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", outputFile)));
+				string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", screenshotOutputFile)));
 				SaveScreenshotPNG(screenshotTexture, fullPath);
 				DestroyImmediate(screenshotTexture);
 			}
@@ -684,7 +922,7 @@ namespace SyncSketch
 				var allCameras = Resources.FindObjectsOfTypeAll<Camera>();
 				foreach (var cam in allCameras)
 				{
-					if(cam.name == "SceneCamera")
+					if (cam.name == "SceneCamera")
 					{
 						continue;
 					}
@@ -704,7 +942,7 @@ namespace SyncSketch
 				var screenshotTexture = CameraToTexture(mainCam);
 
 				// save to disk and send for review
-				string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", outputFile)));
+				string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", screenshotOutputFile)));
 				SaveScreenshotPNG(screenshotTexture, fullPath);
 				DestroyImmediate(screenshotTexture);
 			}
@@ -714,10 +952,10 @@ namespace SyncSketch
 			}
 		}
 
-		void UploadScreenshot(byte[] data, string filename)
+		void UploadMediaFile(byte[] data, string filename, string mimeType, bool noConvert)
 		{
 			blockingRequests++;
-			void callback(bool isError, string message)
+			API.AsyncResult callback = (bool isError, string message) =>
 			{
 				blockingRequests--;
 				progressBar = 0;
@@ -728,26 +966,31 @@ namespace SyncSketch
 					var reviewURL = json["reviewURL"];
 					OnMediaUploaded(reviewURL);
 
-					Preferences.instance.lastScreenshotUploads.Insert(0, new ReviewUploadInfo()
+					var uploadInfo = new ReviewUploadInfo()
 					{
 						filename = filename,
 						reviewName = selectedReview.name,
 						reviewURL = reviewURL,
 						date = json["created"]
-					});
-					while(Preferences.instance.lastScreenshotUploads.Count > 10)
-					{
-						Preferences.instance.lastScreenshotUploads.RemoveAt(10);
-					}
-
-					Preferences.Save();
+					};
+					AddToLastUploads(uploadInfo);
 				}
 				else
 				{
-					Debug.LogError("An error occurred: " + message);
+					Log.Error("An error occurred: " + message);
 				}
+			};
+			selectedReview.UploadMediaAsync(syncSketch, callback, UpdateProgressBar, data, filename, mimeType, noConvertFlag: noConvert);
+		}
+
+		void AddToLastUploads(ReviewUploadInfo uploadInfo)
+		{
+			Preferences.instance.lastScreenshotUploads.Insert(0, uploadInfo);
+			while (Preferences.instance.lastScreenshotUploads.Count > 10)
+			{
+				Preferences.instance.lastScreenshotUploads.RemoveAt(10);
 			}
-			selectedReview.UploadMediaAsync(syncSketch, callback, UpdateProgressBar, data, filename, "image/png", noConvertFlag: false);
+			Preferences.Save();
 		}
 
 		/// <summary>
@@ -836,7 +1079,7 @@ namespace SyncSketch
 						EditorApplication.delayCall += () =>
 						{
 							var screenshotTexture = SceneViewScreenshot(offsetRect);
-							string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", outputFile)));
+							string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", screenshotOutputFile)));
 							SaveScreenshotPNG(screenshotTexture, fullPath);
 							DestroyImmediate(screenshotTexture);
 						};
@@ -860,10 +1103,10 @@ namespace SyncSketch
 						// U  or y coordinates are flipped, so we measure from the bottom of the texture and offset by the height
 						offsetRect.y = screenshotTexture.height - offsetRect.y - offsetRect.height;
 
-						int x = (int) Mathf.Clamp(offsetRect.x, 0, camWidth);
-						int y = (int) Mathf.Clamp(offsetRect.y, 0, camHeight);
-						int w = (int) Mathf.Clamp(offsetRect.width, 1, camWidth - offsetRect.x);
-						int h = (int) Mathf.Clamp(offsetRect.height, 1, camHeight - offsetRect.y);
+						int x = (int)Mathf.Clamp(offsetRect.x, 0, camWidth);
+						int y = (int)Mathf.Clamp(offsetRect.y, 0, camHeight);
+						int w = (int)Mathf.Clamp(offsetRect.width, 1, camWidth - offsetRect.x);
+						int h = (int)Mathf.Clamp(offsetRect.height, 1, camHeight - offsetRect.y);
 
 						var pixels = screenshotTexture.GetPixels(x, y, w, h);
 						screenshotTexture.Resize(w, h);
@@ -871,7 +1114,7 @@ namespace SyncSketch
 						screenshotTexture.Apply(false, false);
 
 						// save to disk
-						string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", outputFile)));
+						string fullPath = Utils.Path.UniqueFileName(Utils.Path.ForwardSlashes(string.Format("{0}.png", screenshotOutputFile)));
 						SaveScreenshotPNG(screenshotTexture, fullPath);
 						DestroyImmediate(screenshotTexture);
 					}
@@ -921,11 +1164,14 @@ namespace SyncSketch
 			lastScreenshotFilename = Path.GetFileName(fullPath);
 			lastScreenshotFileExists = true;
 
+			// replace any pending videos
+			lastRecordings.Clear();
+
 			string filename = Path.GetFileName(fullPath);
 			if (selectedReview != null && Preferences.instance.uploadToReviewAfterScreenshot)
 			{
 				// upload to review: the review URL will be copied to clipboard
-				UploadScreenshot(screenshotBytes, filename);
+				UploadMediaFile(screenshotBytes, filename, "image/png", false);
 			}
 			else
 			{
@@ -1000,6 +1246,173 @@ namespace SyncSketch
 			System.Windows.Forms.Clipboard.SetImage(image);
 		}
 		*/
+
+		#endregion
+
+		#region Record Video
+
+		void DoRecordVideo()
+		{
+			if (EditorApplication.isPlaying)
+			{
+				// trigger recording during play mode
+				InitVideoRecorder();
+			}
+			else
+			{
+				startRecordingWithPlayMode = true;
+				EditorApplication.isPlaying = true;
+			}
+		}
+
+		void InitVideoRecorder()
+		{
+			// try to fetch the one from the main camera
+			if (videoRecorder == null)
+			{
+				var mainCam = Camera.main;
+				if (mainCam != null)
+				{
+					videoRecorder = mainCam.GetComponent<SyncSketchRecorder>();
+				}
+			}
+
+			// else create a temporary recorder
+			if (videoRecorder == null)
+			{
+				var gameObject = new GameObject("SyncSketch Video Recorder");
+				DontDestroyOnLoad(gameObject);
+				// gameObject.hideFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
+				var postCamera = gameObject.AddComponent<Camera>();
+				postCamera.clearFlags = CameraClearFlags.Nothing;
+				postCamera.cullingMask = 0;
+				postCamera.farClipPlane = 1;
+				postCamera.depth = 100;
+				postCamera.allowMSAA = false;
+				postCamera.allowHDR = false;
+				postCamera.hideFlags = HideFlags.NotEditable;
+
+				// Added at the start of play mode, so it will destroy itself when stopping because
+				// it was not part of the serialized scene beforehand.
+				videoRecorder = gameObject.AddComponent<SyncSketchRecorder>();
+				videoRecorder.toolbox = true;
+				videoRecorder.recordingSettings = new SyncSketchRecorder.RecordingSettings()
+				{
+					frameRate = 30,
+					useGameResolution = true,
+					noFrameSkip = true,
+					outputFile = videoOutputFile
+				};
+				videoRecorder.hideFlags = HideFlags.NotEditable;
+			}
+
+			videoRecorder.StartRecording();
+		}
+
+		void StopRecording(bool stopPlayMode)
+		{
+			if (videoRecorder != null)
+			{
+				videoRecorder.StopRecording();
+				// Destroy(videoRecorder.gameObject);
+			}
+
+			if (stopPlayMode)
+			{
+				EditorApplication.isPlaying = false;
+			}
+		}
+
+		#endregion
+
+		#region Upload Multiple Videos
+
+		int uploadMultipleIndex;
+		int uploadMultipleReview;
+		void UploadMultipleRecordings()
+		{
+			if (selectedReview == null || !selectedReview.isValid)
+			{
+				return;
+			}
+
+			uploadMultipleIndex = -1;
+			uploadMultipleReview = selectedReview.id;
+
+			UploadMultipleNext();
+		}
+
+		bool UploadMultipleNext()
+		{
+			uploadMultipleIndex++;
+
+			if (uploadMultipleIndex >= lastRecordings.Count)
+			{
+				return false;
+			}
+
+			var fileData = File.ReadAllBytes(lastRecordings[uploadMultipleIndex].fullPath);
+			API.UploadMediaAsync(syncSketch, OnUploadFinishedMultiple, OnUploadProgressMultiple, uploadMultipleReview, fileData, lastRecordings[uploadMultipleIndex].filename, "video/mp4", true);
+			blockingRequests++;
+
+			return true;
+		}
+
+		// During multiple-file upload, called when one part has finished
+		void OnUploadFinishedMultiple(bool isError, string message)
+		{
+			blockingRequests--;
+
+			if (isError)
+			{
+				// error
+				EditorUtility.DisplayDialog("SyncSketch : Error", "An error occurred during upload:\n\n" + message, "OK");
+			}
+
+			var recording = lastRecordings[uploadMultipleIndex];
+			bool allDone = !UploadMultipleNext();
+
+			if (allDone)
+			{
+				EditorUtility.ClearProgressBar();
+				progressBar = 0f;
+			}
+
+			if (!isError)
+			{
+				// success: fetch review URL
+				var json = TinyJSON.JSON.Load(message);
+				string reviewURL = json["reviewURL"] + "?offlineMode=1";
+
+				// add to list of recent uploaded reviews
+				var uploadInfo = new ReviewUploadInfo()
+				{
+					filename = recording.filename,
+					reviewName = selectedReview.name,
+					reviewURL = reviewURL,
+					date = json["created"]
+				};
+				AddToLastUploads(uploadInfo);
+
+				if (allDone)
+				{
+					// feedback
+					EditorUtility.DisplayDialog("SyncSketch", "The files have been successfully uploaded for review.", "OK");
+
+					// open review URL
+					Application.OpenURL(reviewURL);
+				}
+			}
+		}
+
+		// During multiple-file upload
+		void OnUploadProgressMultiple(float progress)
+		{
+			float realProgress = (uploadMultipleIndex + progress) / lastRecordings.Count;
+
+			EditorUtility.DisplayProgressBar("SyncSketch", string.Format("Uploading video {0}/{1} to review '{2}'...", uploadMultipleIndex+1, lastRecordings.Count, selectedReview.name), realProgress);
+			progressBar = progress;
+		}
 
 		#endregion
 	}

@@ -254,7 +254,7 @@ namespace SyncSketch
 			var root = new Item(0, -1, "Root", null);
 			allRows = new List<Item>(50);
 
-			bool insertNewReview = newItemToInsert != null && newItemSiblingId > 0;
+			// bool insertNewReview = newItemToInsert != null && newItemSiblingId > 0;
 			int depth = syncSketch.HasMultipleAccounts ? 1 : 0;
 			var current = root;
 			foreach (var account in syncSketch.accounts)
