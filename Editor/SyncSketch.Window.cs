@@ -136,7 +136,7 @@ namespace SyncSketch
 			{
 				OnPlayModeStarted();
 			}
-			else if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode)
+			else if (playMode == PlayModeStateChange.EnteredEditMode)
 			{
 				OnPlayModeEnded();
 			}
@@ -1283,14 +1283,15 @@ namespace SyncSketch
 				postCamera.cullingMask = 0;
 				postCamera.farClipPlane = 1;
 				postCamera.depth = 100;
-				postCamera.allowMSAA = false;
-				postCamera.allowHDR = false;
+				postCamera.allowMSAA = true;
+				postCamera.allowHDR = true;
 				postCamera.hideFlags = HideFlags.NotEditable;
 
 				// Added at the start of play mode, so it will destroy itself when stopping because
 				// it was not part of the serialized scene beforehand.
 				videoRecorder = gameObject.AddComponent<SyncSketchRecorder>();
 				videoRecorder.toolbox = true;
+				videoRecorder.stackedCameras = true;
 				videoRecorder.recordingSettings = new SyncSketchRecorder.RecordingSettings()
 				{
 					frameRate = 30,
