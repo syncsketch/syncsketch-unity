@@ -158,7 +158,10 @@ namespace SyncSketch
 					if (GUI.Button(btnRect, GUIContents.UrlIcon.Tooltip("Copy review URL to clipboard"), EditorStyles.miniButton))
 					{
 						EditorGUIUtility.systemCopyBuffer = element.reviewURL;
-						showNotification?.Invoke("Review URL copied to clipboard");
+						if (showNotification != null)
+						{
+							showNotification.Invoke("Review URL copied to clipboard");
+						}
 					}
 				}
 
@@ -318,7 +321,7 @@ namespace SyncSketch
 				if (EditorGUI.EndChangeCheck())
 				{
 					// reset to temporary path if value is empty
-					if (string.IsNullOrWhiteSpace(directoryProp.stringValue))
+					if (string.IsNullOrEmpty(directoryProp.stringValue))
 					{
 						directoryProp.stringValue = Path.GetTempPath();
 					}
@@ -332,7 +335,7 @@ namespace SyncSketch
 					}
 
 					string output = EditorUtility.SaveFolderPanel("Recording Path", startingPath, "");
-					if (!string.IsNullOrWhiteSpace(output))
+					if (!string.IsNullOrEmpty(output))
 					{
 						directoryProp.stringValue = output;
 					}
@@ -538,7 +541,7 @@ namespace SyncSketch
 				// set internal pixelsPerPoint value of the texture, so that Unity knows it's for high-dpi screens
 				if (texture != null && texture2D_pixelsPerPoint != null)
 				{
-					texture2D_pixelsPerPoint.SetValue(texture, 2.0f);
+					texture2D_pixelsPerPoint.SetValue(texture, 2.0f, null);
 				}
 
 				if (option == FindTextureOption.HighResolutionOnly)
@@ -704,7 +707,7 @@ namespace SyncSketch
 #endif
 			}
 
-			void onLoginInternal()
+			Action onLoginInternal = () =>
 			{
 
 #if LOGIN_WITH_API_KEY
@@ -720,13 +723,16 @@ namespace SyncSketch
 					waitingForResponse = false;
 				});
 #endif
-			}
-
-			void onLogoutInternal()
+			};
+			
+			Action onLogoutInternal = () =>
 			{
 				syncSketch.Logout();
-				onLogout?.Invoke();
-			}
+				if (onLogout != null)
+				{
+					onLogout.Invoke();
+				}
+			};
 
 			LoginFieldInternal(syncSketch, onLoginInternal, onLogoutInternal, onCancel);
 		}

@@ -115,13 +115,13 @@ namespace SyncSketch
 				{
 					if(propFrameRate == null)
 					{
-						propFrameRate = property.FindPropertyRelative(nameof(frameRate));
-						propNoFrameSkip = property.FindPropertyRelative(nameof(noFrameSkip));
-						propWidth = property.FindPropertyRelative(nameof(width));
-						propHeight = property.FindPropertyRelative(nameof(height));
-						propUseGameResolution = property.FindPropertyRelative(nameof(useGameResolution));
-						propKeepAspectRatio = property.FindPropertyRelative(nameof(keepAspectRatio));
-						propOutputFile = property.FindPropertyRelative(nameof(outputFile));
+						propFrameRate = property.FindPropertyRelative("frameRate");
+						propNoFrameSkip = property.FindPropertyRelative("noFrameSkip");
+						propWidth = property.FindPropertyRelative("width");
+						propHeight = property.FindPropertyRelative("height");
+						propUseGameResolution = property.FindPropertyRelative("useGameResolution");
+						propKeepAspectRatio = property.FindPropertyRelative("keepAspectRatio");
+						propOutputFile = property.FindPropertyRelative("outputFile");
 					}
 				}
 
@@ -130,10 +130,10 @@ namespace SyncSketch
 					init(property);
 					var rect = position;
 					rect.height = EditorGUIUtility.singleLineHeight;
-					void nextPropertyRect()
+					Action nextPropertyRect = () =>
 					{
 						rect.y += rect.height + EditorGUIUtility.standardVerticalSpacing;
-					}
+					};
 
 					if (EditorGUI.PropertyField(rect, property))
 					{
@@ -475,8 +475,8 @@ namespace SyncSketch
 				return _recordingRedDot;
 			}
 		}
-		static Color recordColor = new Color32(255, 0, 0, 255);
-		static Color pauseColor = new Color32(128, 128, 128, 255);
+		// static Color recordColor = new Color32(255, 0, 0, 255);
+		// static Color pauseColor = new Color32(128, 128, 128, 255);
 		static Color blackTransparentColor = new Color32(0, 0, 0, 128);
 
 		void OnGUI()
@@ -515,7 +515,8 @@ namespace SyncSketch
 			float blink = Time.realtimeSinceStartup % 1f;
 			if (recordingRedDot != null && (blink > 0.5f || !isRecording))
 			{
-				GUI.DrawTexture(dotRect, recordingRedDot, ScaleMode.ScaleToFit, true, 0, isRecording ? recordColor : pauseColor, 0, 0);
+				// GUI.DrawTexture(dotRect, recordingRedDot, ScaleMode.ScaleToFit, true, 0, isRecording ? recordColor : pauseColor, 0, 0);
+				GUI.DrawTexture(dotRect, recordingRedDot, ScaleMode.ScaleToFit, true, 0);
 			}
 			GUI.Label(labelRect, guiContent, style);
 		}

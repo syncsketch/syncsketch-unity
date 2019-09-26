@@ -80,7 +80,9 @@ namespace SyncSketch
 
 		void OnEnable()
 		{
-			EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+			this.autoRepaintOnSceneChange = true;
+
+			EditorApplication.playmodeStateChanged += OnPlayModeStateChanged;
 
 			if(Preferences.instance.screenshotOutputFile != null)
 			{
@@ -92,19 +94,24 @@ namespace SyncSketch
 			outputPathLabel = new GUIContent(outputFileProperty.displayName);
 			filePathDrawer = new FilePathDrawer();
 
-			syncSketch = PersistentSession.TryFind()?.syncSketch;
+			var session = PersistentSession.TryFind();
+			if (session != null)
+			{
+				syncSketch = session.syncSketch;
+			}
 
 			this.minSize = new Vector2(310, this.minSize.y);
 		}
 
 		void OnDisable()
 		{
-			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+			EditorApplication.playmodeStateChanged -= OnPlayModeStateChanged;
 		}
 
-		void OnPlayModeStateChanged(PlayModeStateChange playMode)
+		void OnPlayModeStateChanged()
 		{
-			if (playMode == PlayModeStateChange.EnteredPlayMode)
+			// if (playMode == PlayModeStateChange.EnteredPlayMode)
+			if (EditorApplication.isPlaying && EditorApplication.isPlayingOrWillChangePlaymode)
 			{
 				InitRecorder(false);
 			}
@@ -124,11 +131,11 @@ namespace SyncSketch
 
 		void OnSync()
 		{
-			void syncDone()
+			Action syncDone = () =>
 			{
 				blockingRequests--;
 				treeView.Reload();
-			}
+			};
 
 			blockingRequests++;
 			syncSketch.SyncAccount_Async(syncDone, syncDone, null);
@@ -162,17 +169,17 @@ namespace SyncSketch
 
 			// Login/Logout bar
 
-			void onLogout()
+			Action onLogout = () =>
 			{
 				DoLogout();
 				GUIUtility.ExitGUI();
 				return;
-			}
+			};
 
-			void onLogin(string username, string apiKey)
+			Action<string, string> onLogin = (string username, string apiKey) =>
 			{
 				DoLogin(username, apiKey);
-			}
+			};
 
 			GUIUtils.LoginField(syncSketch, onLogin, onLogout);
 
@@ -183,7 +190,11 @@ namespace SyncSketch
 				// check if we've been logged in externally
 				if (Event.current.type == EventType.Repaint)
 				{
-					syncSketch = PersistentSession.TryFind()?.syncSketch;
+					var session = PersistentSession.TryFind();
+					if (session != null)
+					{
+						syncSketch = session.syncSketch;
+					}
 				}
 			}
 			else

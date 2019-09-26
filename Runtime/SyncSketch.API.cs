@@ -184,7 +184,10 @@ namespace SyncSketch
 					if (!string.IsNullOrEmpty(json) && IsValidJSON(json))
 					{
 						this.GetAccountsFromJSON(json);
-						onSuccess?.Invoke();
+						if (onSuccess != null)
+						{
+							onSuccess.Invoke();
+						}
 					}
 					else
 					{
@@ -192,9 +195,9 @@ namespace SyncSketch
 					}
 				}
 
-				if(isError)
+				if(isError && onError != null)
 				{
-					onError?.Invoke();
+					onError.Invoke();
 				}
 			};
 
@@ -224,7 +227,7 @@ namespace SyncSketch
 
 			var syncSketch = new API(username, apiKey);
 
-			void callback(bool isError, string message)
+			AsyncResult callback = (isError, message) =>
 			{
 				if (isError)
 				{
@@ -247,7 +250,7 @@ namespace SyncSketch
 						resultCallback(true, null);
 					}
 				}
-			}
+			};
 			syncSketch.GetJSON_Async(callback, progressCallback, "person/tree", "active=1");
 		}
 
@@ -459,7 +462,7 @@ namespace SyncSketch
 			using (UnityWebRequest request = UnityWebRequest.Get(url))
 			{
 				request.SetRequestHeader("Content-Type", "application/json");
-				request.SendWebRequest();
+				request.Send();
 
 				float timeout = Time.realtimeSinceStartup + RequestTimeout;
 				while (!request.isDone && Time.realtimeSinceStartup < timeout)
@@ -472,7 +475,7 @@ namespace SyncSketch
 					return null;
 				}
 
-				if (request.isNetworkError || request.isHttpError)
+				if (request.isError)
 				{
 					Log.Error("Request Error: " + request.error);
 					return null;
@@ -497,7 +500,7 @@ namespace SyncSketch
 				request.SetRequestHeader("Content-Type", "application/json");
 				request.uploadHandler = new UploadHandlerRaw(jsonBytes);
 				request.downloadHandler = new DownloadHandlerBuffer();
-				request.SendWebRequest();
+				request.Send();
 
 				float timeout = Time.realtimeSinceStartup + RequestTimeout;
 				while (!request.isDone && Time.realtimeSinceStartup < timeout)
@@ -510,7 +513,7 @@ namespace SyncSketch
 					return null;
 				}
 
-				if (request.isNetworkError || request.isHttpError)
+				if (request.isError)
 				{
 					Log.Error("Request Error: " + request.error);
 					return null;
@@ -565,7 +568,7 @@ namespace SyncSketch
 			Log.Message(string.Format("PostData: {0}", url));
 			using (UnityWebRequest request = UnityWebRequest.Post(url, wwwForm))
 			{
-				request.SendWebRequest();
+				request.Send();
 
 				float timeout = Time.realtimeSinceStartup + RequestTimeout;
 				while (!request.isDone && Time.realtimeSinceStartup < timeout)
@@ -578,7 +581,7 @@ namespace SyncSketch
 					return null;
 				}
 
-				if (request.isNetworkError || request.isHttpError)
+				if (request.isError)
 				{
 					Log.Error("Request Error: " + request.error);
 					return null;
@@ -603,7 +606,7 @@ namespace SyncSketch
 			Log.Message("GetJSON_Async: " + url);
 			UnityWebRequest request = UnityWebRequest.Get(url);
 			request.SetRequestHeader("Content-Type", "application/json");
-			request.SendWebRequest();
+			request.Send();
 
 			asyncCalls.Add(new AsyncCall(resultCallback, progressCallback, request, Time.realtimeSinceStartup + API.RequestTimeout));
 			RegisterUpdate();
@@ -620,7 +623,7 @@ namespace SyncSketch
 			request.SetRequestHeader("Content-Type", "application/json");
 			request.uploadHandler = new UploadHandlerRaw(jsonBytes);
 			request.downloadHandler = new DownloadHandlerBuffer();
-			request.SendWebRequest();
+			request.Send();
 
 			asyncCalls.Add(new AsyncCall(resultCallback, progressCallback, request, Time.realtimeSinceStartup + API.RequestTimeout));
 			RegisterUpdate();
@@ -643,7 +646,7 @@ namespace SyncSketch
 
 			Log.Message(string.Format("PostData_Async: {0}", url));
 			UnityWebRequest request = UnityWebRequest.Post(url, wwwForm);
-			request.SendWebRequest();
+			request.Send();
 
 			asyncCalls.Add(new AsyncCall(resultCallback, progressCallback, request, Time.realtimeSinceStartup + API.UploadTimeout));
 			RegisterUpdate();
@@ -716,7 +719,7 @@ namespace SyncSketch
 					asyncCalls.RemoveAt(i);
 				}
 				// request error
-				else if (asyncCall.request.isNetworkError || asyncCall.request.isHttpError)
+				else if (asyncCall.request.isError)
 				{
 					asyncCall.resultCallback(true, "Request Error: " + asyncCall.request.error);
 					asyncCalls.RemoveAt(i);
@@ -853,7 +856,7 @@ namespace SyncSketch
 
 			public void FetchProjects_Async(API syncSketch, AsyncResult resultCallback, AsyncProgress progressCallback)
 			{
-				void callback(bool isError, string message)
+				AsyncResult callback = (bool isError, string message) =>
 				{
 					if (isError)
 					{
@@ -864,8 +867,11 @@ namespace SyncSketch
 						ParseProjects(syncSketch, message);
 					}
 
-					resultCallback?.Invoke(isError, message);
-				}
+					if (resultCallback != null)
+					{
+						resultCallback.Invoke(isError, message);
+					}
+				};
 				syncSketch.GetJSON_Async(callback, progressCallback, "project", "active=1");
 			}
 
@@ -967,7 +973,7 @@ namespace SyncSketch
 
 			public void FetchReviewsAsync(API syncSketch, AsyncResult resultCallback, AsyncProgress progressCallback)
 			{
-				void callback(bool isError, string message)
+				AsyncResult callback = (bool isError, string message) =>
 				{
 					if (isError)
 					{
@@ -978,8 +984,11 @@ namespace SyncSketch
 						ParseReviews(syncSketch, message);
 					}
 
-					resultCallback?.Invoke(isError, message);
-				}
+					if (resultCallback != null)
+					{
+						resultCallback.Invoke(isError, message);
+					}
+				};
 
 				syncSketch.GetJSON_Async(callback, progressCallback, "review", "project__id=" + this.id);
 			}

@@ -39,7 +39,10 @@ namespace SyncSketch
 				set
 				{
 					_visibleRowsCount = value;
-					onVisibleRowCountChange?.Invoke(value);
+					if (onVisibleRowCountChange != null)
+					{
+						onVisibleRowCountChange.Invoke(value);
+					}
 				}
 			}
 
@@ -270,13 +273,13 @@ namespace SyncSketch
 
 				foreach (var project in account.projects)
 				{
-					var projectItem = new Item(project.id, depth + 0, string.IsNullOrWhiteSpace(project.name) ? "<no name>" : project.name, project);
+					var projectItem = new Item(project.id, depth + 0, string.IsNullOrEmpty(project.name) ? "<no name>" : project.name, project);
 					allRows.Add(projectItem);
 					ShouldInsertNewItem(projectItem, depth + 1);
 
 					foreach (var review in project.reviews)
 					{
-						var reviewItem = new Item(review.id, depth + 1, string.IsNullOrWhiteSpace(review.name) ? "<no name>" : review.name, review);
+						var reviewItem = new Item(review.id, depth + 1, string.IsNullOrEmpty(review.name) ? "<no name>" : review.name, review);
 
 						projectItem.AddChild(reviewItem);
 						allRows.Add(reviewItem);
@@ -544,7 +547,10 @@ namespace SyncSketch
 
 			if (selectedIds.Count == 0)
 			{
-				itemSelected?.Invoke(null);
+				if (itemSelected != null)
+				{
+					itemSelected.Invoke(null);
+				}
 			}
 			else
 			{

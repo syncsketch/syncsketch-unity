@@ -1,8 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace SyncSketch
@@ -14,14 +14,15 @@ namespace SyncSketch
 	{
 		static PlayModeStateChangeHook()
 		{
-			EditorApplication.playModeStateChanged += OnPlayModeStateChange;
+			EditorApplication.playmodeStateChanged += OnPlayModeStateChange;
 		}
 
-		static void OnPlayModeStateChange(PlayModeStateChange state)
+		static void OnPlayModeStateChange()
 		{
 			// When entering Edit mode, look for any SyncSketchRecorder component in the Scene,
 			// and fetch the last recording from EditorPrefs if any
-			if (state == PlayModeStateChange.EnteredEditMode)
+			if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isPlaying)
+			// if (state == PlayModeStateChange.EnteredEditMode)
 			{
 				var sceneRecorders = Resources.FindObjectsOfTypeAll<SyncSketchRecorder>();
 				foreach (var recorder in sceneRecorders)
@@ -40,7 +41,7 @@ namespace SyncSketch
 
 		API syncSketch;
 		API.Review selectedReview;
-		static string reviewUpload;
+		static string reviewUploadName;
 		float progressBar;
 
 		// last recorded files
@@ -60,7 +61,11 @@ namespace SyncSketch
 		// check if we've been logged in externally
 		void TryFindSyncSketchSession()
 		{
-			syncSketch = PersistentSession.TryFind()?.syncSketch;
+			var session = PersistentSession.TryFind();
+			if (session != null)
+			{
+				syncSketch = session.syncSketch;
+			}
 		}
 
 		void OnEnable()
@@ -72,7 +77,7 @@ namespace SyncSketch
 		{
 			#region Header & Login Field
 
-			void onLogin(string username, string apiKey)
+			Action<string,string> onLogin = (string username, string apiKey) =>
 			{
 				this.Repaint();
 				API.Login_Async(username, apiKey,
@@ -92,7 +97,7 @@ namespace SyncSketch
 						progressBar = Mathf.Max(0.0001f, progress);
 					},
 					true);
-			}
+			};
 
 			// loading/progress bar
 			GUILayout.Space(4);
@@ -152,12 +157,12 @@ namespace SyncSketch
 			{
 				GUIUtils.Separator();
 
-				var reviewIdProp = serializedObject.FindProperty(nameof(SyncSketchRecorder.reviewId));
+				var reviewIdProp = serializedObject.FindProperty("reviewId");
 
 				// tree view init
 				if (treeView == null)
 				{
-					void onSync()
+					Action onSync = () =>
 					{
 						syncSketch.SyncAccount_Async(
 							// success
@@ -172,7 +177,7 @@ namespace SyncSketch
 
 							// progress
 							(progress) => { progressBar = Mathf.Max(0.0001f, progress); });
-					}
+					};
 
 					treeViewState = new SyncSketchTreeView.State(Preferences.instance.treeViewRowsCount);
 					treeViewState.onVisibleRowCountChange += (count) => Preferences.instance.treeViewRowsCount.value = count;
@@ -315,7 +320,7 @@ namespace SyncSketch
 									var fileData = File.ReadAllBytes(recording.fullPath);
 									API.UploadMediaAsync(syncSketch, OnUploadFinished, OnUploadProgress, reviewId, fileData, recording.filename, "video/mp4", true);
 									lastUploadedRecording = recording;
-									reviewUpload = selectedReview.name;
+									reviewUploadName = selectedReview.name;
 								}
 							}
 						}
@@ -398,7 +403,7 @@ namespace SyncSketch
 												var fileData = File.ReadAllBytes(lastRecordings[i].fullPath);
 												API.UploadMediaAsync(syncSketch, OnUploadFinished, OnUploadProgress, reviewId, fileData, lastRecordings[i].filename, "video/mp4", true);
 												lastUploadedRecording = lastRecordings[i];
-												reviewUpload = selectedReview.name;
+												reviewUploadName = selectedReview.name;
 											}
 										}
 									}
@@ -424,7 +429,7 @@ namespace SyncSketch
 				if (Event.current.type == EventType.Layout)
 				{
 					// can only update this flag on Layout to avoid IMGUI layout mismatch errors
-					var uploadOnStopProp = serializedObject.FindProperty(nameof(SyncSketchRecorder.uploadOnStop));
+					var uploadOnStopProp = serializedObject.FindProperty("uploadOnStop");
 					showReviewUploadWarning = uploadOnStopProp.boolValue && (selectedReview == null || !selectedReview.isValid);
 				}
 
@@ -435,7 +440,7 @@ namespace SyncSketch
 			}
 
 			// Last uploaded files list
-			var lastReviewsProp = serializedObject.FindProperty(nameof(SyncSketchRecorder.lastUploads));
+			var lastReviewsProp = serializedObject.FindProperty("lastUploads");
 			int length = lastReviewsProp.arraySize;
 			ReviewUploadInfo.DrawList("Last Screenshot Uploads:", length, (index) => ((SyncSketchRecorder)target).lastUploads[index], null,
 			(deletedIndex) =>
@@ -506,13 +511,13 @@ namespace SyncSketch
 				EditorGUIUtility.systemCopyBuffer = reviewURL;
 
 				// add to list of recent reviews for this Recorder instance
-				var lastReviewsProp = serializedObject.FindProperty(nameof(SyncSketchRecorder.lastUploads));
+				var lastReviewsProp = serializedObject.FindProperty("lastUploads");
 				lastReviewsProp.InsertArrayElementAtIndex(0);
 				var element = lastReviewsProp.GetArrayElementAtIndex(0);
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.filename)).stringValue = lastUploadedRecording.filename;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.reviewName)).stringValue = selectedReview.name;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.reviewURL)).stringValue = reviewURL;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.date)).stringValue = json["created"];
+				element.FindPropertyRelative("filename").stringValue = lastUploadedRecording.filename;
+				element.FindPropertyRelative("reviewName").stringValue = selectedReview.name;
+				element.FindPropertyRelative("reviewURL").stringValue = reviewURL;
+				element.FindPropertyRelative("date").stringValue = json["created"];
 				while (lastReviewsProp.arraySize > 5)
 				{
 					lastReviewsProp.DeleteArrayElementAtIndex(lastReviewsProp.arraySize - 1);
@@ -526,7 +531,7 @@ namespace SyncSketch
 
 		void OnUploadProgress(float progress)
 		{
-			EditorUtility.DisplayProgressBar("SyncSketch", string.Format("Uploading video to review '{0}'...", reviewUpload), progress);
+			EditorUtility.DisplayProgressBar("SyncSketch", string.Format("Uploading video to review '{0}'...", reviewUploadName), progress);
 			progressBar = progress;
 		}
 
@@ -543,7 +548,7 @@ namespace SyncSketch
 
 			uploadMultipleIndex = -1;
 			uploadMultipleReview = selectedReview.id;
-			reviewUpload = selectedReview.name;
+			reviewUploadName = selectedReview.name;
 
 			UploadMultipleNext();
 		}
@@ -587,13 +592,13 @@ namespace SyncSketch
 				string reviewURL = json["reviewURL"] + "?offlineMode=1";
 
 				// add to list of recent reviews for this Recorder instance
-				var lastReviewsProp = serializedObject.FindProperty(nameof(SyncSketchRecorder.lastUploads));
+				var lastReviewsProp = serializedObject.FindProperty("lastUploads");
 				lastReviewsProp.InsertArrayElementAtIndex(0);
 				var element = lastReviewsProp.GetArrayElementAtIndex(0);
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.filename)).stringValue = lastRecordings[uploadMultipleIndex-1].filename;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.reviewName)).stringValue = selectedReview.name;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.reviewURL)).stringValue = reviewURL;
-				element.FindPropertyRelative(nameof(ReviewUploadInfo.date)).stringValue = json["created"];
+				element.FindPropertyRelative("filename").stringValue = lastRecordings[uploadMultipleIndex-1].filename;
+				element.FindPropertyRelative("reviewName").stringValue = selectedReview.name;
+				element.FindPropertyRelative("reviewURL").stringValue = reviewURL;
+				element.FindPropertyRelative("date").stringValue = json["created"];
 				while (lastReviewsProp.arraySize > 5)
 				{
 					lastReviewsProp.DeleteArrayElementAtIndex(lastReviewsProp.arraySize - 1);
@@ -616,7 +621,7 @@ namespace SyncSketch
 		{
 			float realProgress = (uploadMultipleIndex + progress) / lastRecordings.Count;
 
-			EditorUtility.DisplayProgressBar("SyncSketch", string.Format("Uploading video {0}/{1} to review '{2}'...", uploadMultipleIndex+1, lastRecordings.Count, reviewUpload), realProgress);
+			EditorUtility.DisplayProgressBar("SyncSketch", string.Format("Uploading video {0}/{1} to review '{2}'...", uploadMultipleIndex+1, lastRecordings.Count, reviewUploadName), realProgress);
 			progressBar = progress;
 		}
 
