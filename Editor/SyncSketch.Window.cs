@@ -179,8 +179,10 @@ namespace SyncSketch
 							fileExists = File.Exists(file),
 							filename = Path.GetFileName(file)
 						};
-
-						this.lastRecordings.Add(recording);
+						if (recording.fileExists)
+						{
+							this.lastRecordings.Add(recording);
+						}
 					}
 
 					// auto upload
