@@ -65,27 +65,31 @@ namespace SyncSketch
 				width = this.width;
 				height = this.height;
 
+				var gameViewSize = Handles.GetMainGameViewSize();
+				int screenWidth = (int)gameViewSize.x;
+				int screenHeight = (int)gameViewSize.y;
+
 				if (this.useGameResolution)
 				{
-					width = Screen.width;
-					height = Screen.height;
+					width = screenWidth;
+					height = screenHeight;
 				}
 				else if (this.keepAspectRatio)
 				{
-					float ratio = (float)Screen.height/Screen.width;
+					float ratio = (float)screenHeight/screenWidth;
 					height = Mathf.FloorToInt(width * ratio);
 				}
 
 				if (width > 1280)
 				{
-					float ratio = (float)Screen.height/Screen.width;
+					float ratio = (float)screenHeight/screenWidth;
 					width = 1280;
 					height = Mathf.FloorToInt(width * ratio);
 				}
 
 				if (height > 720)
 				{
-					float ratio = (float)Screen.width/Screen.height;
+					float ratio = (float)screenWidth/screenHeight;
 					height = 720;
 					width = Mathf.FloorToInt(height * ratio);
 				}
@@ -209,6 +213,9 @@ namespace SyncSketch
 		FFmpegSession session;
 		RenderTexture tempRT;
 		GameObject blitter;
+		#endregion
+
+		#region Recording
 
 		RenderTextureFormat GetTargetFormat(Camera camera)
 		{
@@ -220,20 +227,12 @@ namespace SyncSketch
 			return camera.allowMSAA ? QualitySettings.antiAliasing : 1;
 		}
 
-		#endregion
-
-		#region Recording
-
 		public void StartRecording()
 		{
 			if (!recorderInitialized)
 			{
 				int width, height;
 				recordingSettings.GetRecordingResolution(out width, out height);
-
-				// make sure we have even numbers (for mp4 format)
-				if (width % 2 == 1) width++;
-				if (height % 2 == 1) height++;
 
 				camera = this.GetComponent<Camera>();
 				if (camera == null)
@@ -328,7 +327,7 @@ namespace SyncSketch
 				// We have to use this technique because when Play Mode stops, the domain is reloaded and this will lose all value changes made during Play Mode.
 				if (currentRecordingInfo == null)
 				{
-					currentRecordingInfo = new RecordingInfo(this);
+					currentRecordingInfo = new RecordingInfo(this.GetInstanceID());
 				}
 				currentRecordingInfo.files.Add(fullPath);
 			}
@@ -572,10 +571,10 @@ namespace SyncSketch
 			public int recorderInstanceID;  // InstanceID stays the same between assembly reloads
 			public List<string> files;
 
-			public RecordingInfo(SyncSketchRecorder recorder)
+			public RecordingInfo(int instanceID)
 			{
 				files = new List<string>();
-				recorderInstanceID = recorder.GetInstanceID();
+				recorderInstanceID = instanceID;
 			}
 
 			public string ToJSON()
@@ -591,6 +590,7 @@ namespace SyncSketch
 
 		[NonSerialized] RecordingInfo currentRecordingInfo;
 		[NonSerialized] public bool editorShouldUpload;
+		[NonSerialized] public bool newRecordingsFetched;
 
 		public void FetchLastRecordings()
 		{
@@ -602,6 +602,7 @@ namespace SyncSketch
 				if (recordingInfo.recorderInstanceID == this.GetInstanceID())
 				{
 					this.lastRecordingInfo = recordingInfo;
+					this.newRecordingsFetched = true;
 
 					if (uploadOnStop)
 					{

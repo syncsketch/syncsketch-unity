@@ -118,13 +118,15 @@ namespace SyncSketch
 
 			DrawDefaultInspectorCustom();
 
-			if (!hasFetchedRecordings)
+			bool newRecordings = ((SyncSketchRecorder)target).newRecordingsFetched;
+			if (!hasFetchedRecordings || newRecordings)
 			{
 				hasFetchedRecordings = true;
+				((SyncSketchRecorder)target).newRecordingsFetched = false;
 
 				var lastRecordingInfo = ((SyncSketchRecorder)target).lastRecordingInfo;
 				lastRecordings = new List<Recording>();
-				if (lastRecordingInfo != null)
+				if (lastRecordingInfo != null && lastRecordingInfo.files != null)
 				{
 					foreach (var file in lastRecordingInfo.files)
 					{
@@ -300,14 +302,16 @@ namespace SyncSketch
 							{
 								//verify that the file seems valid
 								var fileInfo = new FileInfo(recording.fullPath);
-								if (fileInfo.Length < 1000)
+								if (!fileInfo.Exists)
+								{
+									EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file does not exist anymore:\n'{0}'", recording.fullPath), "OK");
+									recording.fileExists = false;
+									lastRecordings[0] = recording;
+								}
+								else if (fileInfo.Length < 1000)
 								{
 									// consider files less than 1kB to be invalid (only header written, most likely error during recording)
 									EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file doesn't seem to be valid:\n'{0}'", recording.fullPath), "OK");
-								}
-								else if (!File.Exists(recording.fullPath))
-								{
-									EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file does not exist anymore:\n'{0}'", recording.fullPath), "OK");
 								}
 								else
 								{
@@ -383,14 +387,17 @@ namespace SyncSketch
 										{
 											//verify that the file seems valid
 											var fileInfo = new FileInfo(lastRecordings[i].fullPath);
-											if (fileInfo.Length < 1000)
+											if (!fileInfo.Exists)
+											{
+												EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file does not exist anymore:\n'{0}'", lastRecordings[i].fullPath), "OK");
+												var r = lastRecordings[i];
+												r.fileExists = false;
+												lastRecordings[i] = r;
+											}
+											else if (fileInfo.Length < 1000)
 											{
 												// consider files less than 1kB to be invalid (only header written, most likely error during recording)
 												EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file doesn't seem to be valid:\n'{0}'", lastRecordings[i].fullPath), "OK");
-											}
-											else if (!File.Exists(lastRecordings[i].fullPath))
-											{
-												EditorUtility.DisplayDialog("SyncSketch : Error", string.Format("The video file does not exist anymore:\n'{0}'", lastRecordings[i].fullPath), "OK");
 											}
 											else
 											{
