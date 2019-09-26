@@ -75,6 +75,7 @@ namespace SyncSketch
 		// Record options
 		public BoolPref uploadToReviewAfterScreenshot = new BoolPref(false);
 		public IntPref lastSelectedItemId = new IntPref(0);
+		public BoolPref stopPlayerOnStopRecording = new BoolPref(false);
 
 		// UI options
 		public IntPref treeViewRowsCount = new IntPref(10);
