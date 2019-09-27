@@ -1,6 +1,10 @@
 # Changelog
 These are the release notes for the SyncSketch Unity plugin package.
 
+## [0.1.1] - 2019-09-27
+- Minor UI changes and fixes
+- Only show important message logs by default
+
 ## [0.1.0] - 2019-08-19
 - Added abitility to record videos from the SyncSketch Toolbox
 - Minor UI changes
