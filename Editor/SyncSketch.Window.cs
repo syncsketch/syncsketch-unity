@@ -36,9 +36,11 @@ namespace SyncSketch
 
 		bool isUsingSRP {  get { return GraphicsSettings.renderPipelineAsset != null; } }
 
+#pragma warning disable 0649
 		[SerializeField] FilePath screenshotOutputFile = new FilePath("Screenshot", "png");
 		[SerializeField] FilePath videoOutputFile = new FilePath("Video", "mp4");
 		[SerializeField] Camera recordingCamera;
+#pragma warning restore 0649
 		// Required to draw the FilePath inspector properly (Unity makes it very complicated to draw with the custom property drawer!)
 		SerializedProperty screenshotOutputFileProperty;
 		SerializedProperty videoOutputFileProperty;
