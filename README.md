@@ -10,3 +10,8 @@ Select the relevant branch based on your Unity version:
 - [`dev_2019.1`](https://github.com/syncsketch/syncsketch-unity/tree/dev_2019.1) for **Unity 2019.1+**
 
 You will find installation instructions there.
+
+# Limitations
+
+- Scriptable Render Pipelines (SRP) only work with Unity 2019.1+ using the [`dev_2019.1`](https://github.com/syncsketch/syncsketch-unity/tree/dev_2019.1) branch
+- HDRP doesn't work properly: nothing will be displayed on screen while recording a video
