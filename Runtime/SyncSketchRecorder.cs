@@ -227,7 +227,7 @@ namespace SyncSketch
 
 		int GetAntiAliasingLevel(Camera camera)
 		{
-			return camera.allowMSAA ? QualitySettings.antiAliasing : 1;
+			return camera.allowMSAA ? Mathf.Max(1, QualitySettings.antiAliasing) : 1;
 		}
 
 		public void StartRecording()
