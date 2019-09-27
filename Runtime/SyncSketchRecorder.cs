@@ -7,6 +7,7 @@ using System.Collections;
 using System.IO;
 using System;
 using System.Collections.Generic;
+using UnityEngine.Rendering;
 
 // TODO Record/Pause Keys should be global settings
 
@@ -227,7 +228,7 @@ namespace SyncSketch
 
 		int GetAntiAliasingLevel(Camera camera)
 		{
-			return camera.allowMSAA ? QualitySettings.antiAliasing : 1;
+			return camera.allowMSAA ? Math.Max(1, QualitySettings.antiAliasing) : 1;
 		}
 
 		public void StartRecording()
@@ -389,6 +390,15 @@ namespace SyncSketch
 			}
 		}
 #endif
+		void Awake()
+		{
+			// Stacked Cameras not compatible with SRPs
+			if (GraphicsSettings.renderPipelineAsset != null)
+			{
+				stackedCameras = false;
+			}
+		}
+
 
 		IEnumerator Start()
 		{

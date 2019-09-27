@@ -1,16 +1,20 @@
 ﻿// FFmpegOut - FFmpeg video encoding plugin for Unity
 // https://github.com/keijiro/KlakNDI
 
+// Modified for the SyncSketch Plugin
+
 Shader "Hidden/FFmpegOut/Blitter"
 {
     Properties
     {
         _MainTex("", 2D) = "gray" {}
+        _UseSRP ("", Float) = 0
     }
 
     HLSLINCLUDE
 
     sampler2D _MainTex;
+    half _UseSRP;
 
     void Vertex(
         uint vid : SV_VertexID,
@@ -29,6 +33,11 @@ Shader "Hidden/FFmpegOut/Blitter"
         float2 texcoord : TEXCOORD
     ) : SV_Target
     {
+        if (_UseSRP > 0)
+        {
+            texcoord.y = 1 - texcoord.y;
+        }
+
         return tex2D(_MainTex, texcoord);
     }
 

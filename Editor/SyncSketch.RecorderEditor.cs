@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEditorInternal;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace SyncSketch
 {
@@ -470,6 +471,15 @@ namespace SyncSketch
 				if ("m_Script" == iterator.propertyPath)
 				{
 					continue;
+				}
+
+				// Hide stackedCameras when SRP is in use
+				if (iterator.name == nameof(SyncSketchRecorder.stackedCameras))
+				{
+					if (GraphicsSettings.renderPipelineAsset != null)
+					{
+						continue;
+					}
 				}
 
 				EditorGUILayout.PropertyField(iterator, true);

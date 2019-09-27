@@ -1,6 +1,8 @@
 // FFmpegOut - FFmpeg video encoding plugin for Unity
 // https://github.com/keijiro/KlakNDI
 
+// Modified for the SyncSketch Plugin
+
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -68,6 +70,7 @@ namespace FFmpegOut
                 var shader = Shader.Find("Hidden/FFmpegOut/Blitter");
                 _material = new Material(shader);
                 _material.SetTexture("_MainTex", _sourceTexture);
+                _material.SetFloat("_UseSRP", GraphicsSettings.renderPipelineAsset != null ? 1 : 0); // SyncSketch
 
                 // Register the camera render callback.
                 UnityEngine.Experimental.Rendering.RenderPipeline.

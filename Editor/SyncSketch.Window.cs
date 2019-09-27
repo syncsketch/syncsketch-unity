@@ -5,6 +5,7 @@ using UnityEditor.IMGUI.Controls;
 using System.IO;
 using System;
 using System.Collections.Generic;
+using UnityEngine.Rendering;
 
 namespace SyncSketch
 {
@@ -33,11 +34,15 @@ namespace SyncSketch
 		API.Review selectedReview;
 		SyncSketchRecorder videoRecorder;
 
+		bool isUsingSRP {  get { return GraphicsSettings.renderPipelineAsset != null; } }
+
 		[SerializeField] FilePath screenshotOutputFile = new FilePath("Screenshot", "png");
 		[SerializeField] FilePath videoOutputFile = new FilePath("Video", "mp4");
+		[SerializeField] Camera recordingCamera;
 		// Required to draw the FilePath inspector properly (Unity makes it very complicated to draw with the custom property drawer!)
 		SerializedProperty screenshotOutputFileProperty;
 		SerializedProperty videoOutputFileProperty;
+		SerializedProperty recordingCameraProperty;
 		GUIContent screenshotOutputPathLabel;
 		GUIContent videoOutputPathLabel;
 		FilePathDrawer filePathDrawer;
@@ -140,6 +145,35 @@ namespace SyncSketch
 			syncSketch = PersistentSession.TryFind()?.syncSketch;
 
 			this.minSize = new Vector2(310, this.minSize.y);
+
+			// if using SRP, we need to fetch a camera to attach the video recorder to
+			recordingCameraProperty = serializedObject.FindProperty(nameof(recordingCamera));
+			if (isUsingSRP && recordingCameraProperty.objectReferenceValue == null)
+			{
+				// find camera with highest depth
+				var allCameras = Resources.FindObjectsOfTypeAll<Camera>();
+				float maxDepth = float.MinValue;
+				foreach (var camera in allCameras)
+				{
+					// dismiss internal cameras (e.g. Scene Camera)
+					if ((camera.gameObject.hideFlags & HideFlags.HideInHierarchy) != 0)
+					{
+						continue;
+					}
+
+					if (camera.targetTexture != null)
+					{
+						continue;
+					}
+
+					if (camera.depth > maxDepth)
+					{
+						recordingCameraProperty.objectReferenceValue = camera;
+						recordingCameraProperty.serializedObject.ApplyModifiedPropertiesWithoutUndo();
+						maxDepth = camera.depth;
+					}
+				}
+			}
 		}
 
 		void OnDisable()
@@ -365,7 +399,7 @@ namespace SyncSketch
 					{
 						GUIStyle buttonStyle = GUIStyles.ButtonLeftAligned;
 
-						using (GUIUtils.Enabled(!startRecordingWithPlayMode && !(videoRecorder != null && videoRecorder.IsRecording)))
+						using (GUIUtils.Enabled(!startRecordingWithPlayMode && !(videoRecorder != null && videoRecorder.IsRecording) && !(isUsingSRP && recordingCameraProperty.objectReferenceValue == null)))
 						{
 							string label = (EditorApplication.isPlaying && !startRecordingWithPlayMode) ?
 								  ((EditorGUIUtility.currentViewWidth < 365) ? " Record\n Video" : " Record Video")
@@ -384,6 +418,16 @@ namespace SyncSketch
 								StopRecording(Preferences.instance.stopPlayerOnStopRecording);
 							}
 						}
+					}
+				}
+
+				if (isUsingSRP)
+				{
+					EditorGUILayout.PropertyField(recordingCameraProperty, GUIUtils.TempContent("Recording Camera:", "You need to define a recording camera when using a Scriptable Render Pipeline"));
+
+					if (recordingCameraProperty.objectReferenceValue == null)
+					{
+						EditorGUILayout.HelpBox("You need to define a recording camera when using a Scriptable Render Pipeline to be able to record from the Toolbox.", MessageType.Warning);
 					}
 				}
 
@@ -1289,32 +1333,53 @@ namespace SyncSketch
 			}
 		}
 
+		// Note: this method is only called when in Play mode
 		void InitVideoRecorder()
 		{
+			if (isUsingSRP)
+			{
+				Debug.Assert(recordingCamera != null, "recordingCamera shouldn't be null at this point");
+				videoRecorder = recordingCamera.GetComponent<SyncSketchRecorder>();
+				if (videoRecorder != null)
+				{
+					videoRecorder.toolbox = true;
+					videoRecorder.recordOnPlay = false;
+				}
+			}
 			// try to fetch the one from the main camera
-			if (videoRecorder == null)
+			else if (videoRecorder == null)
 			{
 				var mainCam = Camera.main;
 				if (mainCam != null)
 				{
 					videoRecorder = mainCam.GetComponent<SyncSketchRecorder>();
+					videoRecorder.toolbox = true;
+					videoRecorder.recordOnPlay = false;
 				}
 			}
-
 			// else create a temporary recorder
 			if (videoRecorder == null)
 			{
-				var gameObject = new GameObject("SyncSketch Video Recorder");
-				DontDestroyOnLoad(gameObject);
-				// gameObject.hideFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
-				var postCamera = gameObject.AddComponent<Camera>();
-				postCamera.clearFlags = CameraClearFlags.Nothing;
-				postCamera.cullingMask = 0;
-				postCamera.farClipPlane = 1;
-				postCamera.depth = 100;
-				postCamera.allowMSAA = true;
-				postCamera.allowHDR = true;
-				postCamera.hideFlags = HideFlags.NotEditable;
+				GameObject gameObject = null;
+
+				if (isUsingSRP)
+				{
+					gameObject = recordingCamera.gameObject;
+				}
+				else
+				{
+					gameObject = new GameObject("SyncSketch Video Recorder");
+					DontDestroyOnLoad(gameObject);
+					// gameObject.hideFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
+					var postCamera = gameObject.AddComponent<Camera>();
+					postCamera.clearFlags = CameraClearFlags.Nothing;
+					postCamera.cullingMask = 0;
+					postCamera.farClipPlane = 1;
+					postCamera.depth = 100;
+					postCamera.allowMSAA = true;
+					postCamera.allowHDR = true;
+					postCamera.hideFlags = HideFlags.NotEditable;
+				}
 
 				// Added at the start of play mode, so it will destroy itself when stopping because
 				// it was not part of the serialized scene beforehand.
