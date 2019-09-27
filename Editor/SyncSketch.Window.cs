@@ -90,7 +90,10 @@ namespace SyncSketch
 		[MenuItem("Window/SyncSketch/Toolbox", priority = 2222)]
 		static void OpenWindow()
 		{
-			GetWindow<Window>("SyncSketch");
+			var window = GetWindow<Window>("SyncSketch");
+			var minSize = window.minSize;
+			minSize.x = 330;
+			window.minSize = minSize;
 		}
 
 		[MenuItem("Window/SyncSketch/Clear Preferences", priority = 2223)]
@@ -201,7 +204,10 @@ namespace SyncSketch
 							filename = Path.GetFileName(file)
 						};
 
-						this.lastRecordings.Add(recording);
+						if (recording.fileExists)
+						{
+							this.lastRecordings.Add(recording);
+						}
 					}
 
 					// auto upload
@@ -373,7 +379,9 @@ namespace SyncSketch
 
 						using (GUIUtils.Enabled(!startRecordingWithPlayMode && !(videoRecorder != null && videoRecorder.IsRecording)))
 						{
-							string label = (EditorApplication.isPlaying && !startRecordingWithPlayMode) ? " Record Video" : " Play & Record";
+							string label = (EditorApplication.isPlaying && !startRecordingWithPlayMode) ?
+								((EditorGUIUtility.currentViewWidth < 365) ? " Record\n Video" : " Record Video") :
+								((EditorGUIUtility.currentViewWidth < 365) ? " Play &\n Record" : " Play & Record");
 							if (GUILayout.Button(GUIContents.Video.Label(label), buttonStyle, GUILayout.Height(bigButtonSize)))
 							{
 								DoRecordVideo();
@@ -382,7 +390,8 @@ namespace SyncSketch
 
 						using (GUIUtils.Enabled(videoRecorder != null && videoRecorder.IsRecording && EditorApplication.isPlaying))
 						{
-							if (GUILayout.Button(GUIContents.PlaybackStop.Label(" Stop Recording"), buttonStyle, GUILayout.Height(bigButtonSize)))
+							string label = (EditorGUIUtility.currentViewWidth < 365) ? " Stop\n Recording" : " Stop Recording";
+							if (GUILayout.Button(GUIContents.PlaybackStop.Label(label), buttonStyle, GUILayout.Height(bigButtonSize)))
 							{
 								StopRecording(Preferences.instance.stopPlayerOnStopRecording);
 							}
@@ -414,7 +423,7 @@ namespace SyncSketch
 				using (GUIUtils.Enabled(selectedReview != null && selectedReview.isValid))
 				{
 					string label = string.Format(" Auto upload files to selected review ({0})", selectedReview != null && selectedReview.isValid ? "'" + selectedReview.name + "'" : "none selected");
-					var guiContent = GUIUtils.TempContent(label, "Automatically upload the screenshot/video once it has been taken/recorded to the currently selected review.");
+					var guiContent = GUIUtils.TempContent(label, "Automatically upload the screenshot/video once it has been taken/recorded to the currently selected review, once Play mode has ended.");
 					Preferences.instance.uploadToReviewAfterScreenshot.value = GUILayout.Toggle(Preferences.instance.uploadToReviewAfterScreenshot, guiContent);
 				}
 
@@ -1338,7 +1347,6 @@ namespace SyncSketch
 			if (videoRecorder != null)
 			{
 				videoRecorder.StopRecording();
-				// Destroy(videoRecorder.gameObject);
 			}
 
 			if (stopPlayMode)
