@@ -41,7 +41,7 @@ namespace FFmpegOut
         Mesh _mesh;
         Material _material;
 
-        void OnBeginCameraRendering(Camera camera)
+        void PreCull(Camera camera)
         {
             if (_mesh == null || camera != GetComponent<Camera>()) return;
 
@@ -49,6 +49,11 @@ namespace FFmpegOut
                 _mesh, transform.localToWorldMatrix,
                 _material, UILayer, camera
             );
+        }
+
+        void BeginCameraRendering(ScriptableRenderContext context, Camera camera)
+        {
+            PreCull(camera);
         }
 
         #endregion
@@ -62,7 +67,7 @@ namespace FFmpegOut
                 // Index-only triangle mesh
                 _mesh = new Mesh();
                 _mesh.vertices = new Vector3[3];
-                _mesh.triangles = new int [] { 0, 1, 2 };
+                _mesh.triangles = new int[] { 0, 1, 2 };
                 _mesh.bounds = new Bounds(Vector3.zero, Vector3.one);
                 _mesh.UploadMeshData(true);
 
@@ -70,12 +75,14 @@ namespace FFmpegOut
                 var shader = Shader.Find("Hidden/FFmpegOut/Blitter");
                 _material = new Material(shader);
                 _material.SetTexture("_MainTex", _sourceTexture);
-                _material.SetFloat("_UseSRP", GraphicsSettings.renderPipelineAsset != null ? 1 : 0); // SyncSketch
 
                 // Register the camera render callback.
-                UnityEngine.Experimental.Rendering.RenderPipeline.
-                    beginCameraRendering += OnBeginCameraRendering; // SRP
-                Camera.onPreCull += OnBeginCameraRendering; // Legacy
+#if UNITY_2019_2_OR_NEWER
+                RenderPipelineManager.beginCameraRendering += BeginCameraRendering; // SRP
+#else
+                UnityEngine.Experimental.Rendering.RenderPipeline.beginCameraRendering += PreCull; // SRP
+#endif
+                Camera.onPreCull += PreCull; // Legacy
             }
         }
 
@@ -84,9 +91,12 @@ namespace FFmpegOut
             if (_mesh != null)
             {
                 // Unregister the camera render callback.
-                UnityEngine.Experimental.Rendering.RenderPipeline.
-                    beginCameraRendering -= OnBeginCameraRendering; // SRP
-                Camera.onPreCull -= OnBeginCameraRendering; // Legacy
+#if UNITY_2019_2_OR_NEWER
+                RenderPipelineManager.beginCameraRendering -= BeginCameraRendering; // SRP
+#else
+                UnityEngine.Experimental.Rendering.RenderPipeline.beginCameraRendering -= PreCull; // SRP
+#endif
+                Camera.onPreCull -= PreCull; // Legacy
 
                 // Destroy temporary objects.
                 Destroy(_mesh);
