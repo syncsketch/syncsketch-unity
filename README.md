@@ -61,4 +61,4 @@ If you wish to manually install your static FFmpeg binaries in the project, you 
 
 ## Getting Started
 
-Please read the [guide at SyncSketch.com](https://support.syncsketch.com/article/67-syncsketch-unity-integration) to get started!
+Please read the [guide at SyncSketch.com](https://support.syncsketch.com/syncsketch-unity-integration) to get started!
