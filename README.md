@@ -21,4 +21,4 @@ Make sure to use the correct [branch](https://github.com/syncsketch/syncsketch-u
 
 ## Getting Started
 
-Please read the [guide at SyncSketch.com](https://support.syncsketch.com/article/67-syncsketch-unity-integration) to get started!
+Please read the [guide at SyncSketch.com](https://support.syncsketch.com/syncsketch-unity-integration) to get started!
